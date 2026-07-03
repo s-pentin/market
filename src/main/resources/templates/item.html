@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${item.title} + ' — Магазин'">Товар</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
+</head>
+<body>
+<div class="container py-4" style="max-width:700px">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <a href="/items" class="btn btn-outline-secondary">← Назад</a>
+        <div>
+            <a href="/cart/items" class="btn btn-outline-secondary me-2">🛒 Корзина</a>
+            <a href="/orders" class="btn btn-outline-secondary">📋 Заказы</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <img th:if="${item.imgPath != null}" th:src="${item.imgPath}"
+             class="card-img-top" style="max-height:350px;object-fit:contain;" alt=""/>
+        <div class="card-body">
+            <h2 class="card-title" th:text="${item.title}"></h2>
+            <p class="text-muted" th:text="${item.description}"></p>
+            <div class="fs-4 fw-bold mb-3" th:text="${item.price} + ' ₽'"></div>
+
+            <form th:action="@{/items/{id}(id=${item.id})}" method="post"
+                  class="d-flex align-items-center gap-3">
+                <button type="submit" name="action" value="MINUS"
+                        class="btn btn-outline-secondary btn-lg">−</button>
+                <span class="fs-4 fw-bold" th:text="${item.count}"></span>
+                <button type="submit" name="action" value="PLUS"
+                        class="btn btn-outline-primary btn-lg">+</button>
+                <span class="text-muted" th:if="${item.count > 0}"
+                      th:text="'В корзине: ' + ${item.count} + ' шт.'"></span>
+            </form>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>
