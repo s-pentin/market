@@ -49,7 +49,7 @@ class ProductRepositoryTest extends TestPostgresContainer {
                 .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("ball", "ball");
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getTitle()).isEqualTo("Cup");
+        assertThat(result.getFirst().getTitle()).isEqualTo("Cup");
     }
 
     @Test

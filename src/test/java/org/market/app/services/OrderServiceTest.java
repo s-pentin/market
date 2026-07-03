@@ -44,10 +44,10 @@ class OrderServiceTest {
         List<OrderDto> result = orderService.getAllOrders();
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getId()).isEqualTo(1L);
-        assertThat(result.get(0).getTotalSum()).isEqualTo(500L);
-        assertThat(result.get(0).getItems()).hasSize(1);
-        assertThat(result.get(0).getItems().get(0).getTitle()).isEqualTo("Ball");
+        assertThat(result.getFirst().getId()).isEqualTo(1L);
+        assertThat(result.getFirst().getTotalSum()).isEqualTo(500L);
+        assertThat(result.getFirst().getItems()).hasSize(1);
+        assertThat(result.getFirst().getItems().getFirst().getTitle()).isEqualTo("Ball");
     }
 
     @Test

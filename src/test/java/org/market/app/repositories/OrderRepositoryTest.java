@@ -50,8 +50,8 @@ class OrderRepositoryTest extends TestPostgresContainer {
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getItems()).hasSize(1);
-        assertThat(saved.getItems().get(0).getTitle()).isEqualTo("Ball");
-        assertThat(saved.getItems().get(0).getId()).isNotNull();
+        assertThat(saved.getItems().getFirst().getTitle()).isEqualTo("Ball");
+        assertThat(saved.getItems().getFirst().getId()).isNotNull();
     }
 
     @Test

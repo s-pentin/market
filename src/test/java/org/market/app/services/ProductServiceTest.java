@@ -74,7 +74,7 @@ class ProductServiceTest {
         ProductsPage result = productService.getProducts(null, SortType.NO, 1, 5);
 
         assertThat(result.getItems()).hasSize(1);
-        assertThat(result.getItems().get(0)).hasSize(3); // 2 products + 1 stub
+        assertThat(result.getItems().getFirst()).hasSize(3); // 2 products + 1 stub
         assertThat(result.getSearch()).isNull();
     }
 
@@ -103,7 +103,7 @@ class ProductServiceTest {
 
         ProductsPage result = productService.getProducts(null, SortType.ALPHA, 1, 5);
 
-        List<ItemDto> row = result.getItems().get(0);
+        List<ItemDto> row = result.getItems().getFirst();
         assertThat(row.get(0).getTitle()).isEqualTo("Apple");
         assertThat(row.get(1).getTitle()).isEqualTo("Banana");
         assertThat(row.get(2).getTitle()).isEqualTo("Carrot");
@@ -121,7 +121,7 @@ class ProductServiceTest {
 
         ProductsPage result = productService.getProducts(null, SortType.PRICE, 1, 5);
 
-        List<ItemDto> row = result.getItems().get(0);
+        List<ItemDto> row = result.getItems().getFirst();
         assertThat(row.get(0).getPrice()).isEqualTo(20L);
         assertThat(row.get(1).getPrice()).isEqualTo(30L);
         assertThat(row.get(2).getPrice()).isEqualTo(50L);
@@ -143,7 +143,7 @@ class ProductServiceTest {
         assertThat(result.getPaging().isHasNext()).isTrue();
         // страница 2, размер 3 → товары 4, 5, 6 → одна строка из 3
         assertThat(result.getItems()).hasSize(1);
-        assertThat(result.getItems().get(0).get(0).getTitle()).isEqualTo("Product 4");
+        assertThat(result.getItems().getFirst().getFirst().getTitle()).isEqualTo("Product 4");
     }
 
     @Test
@@ -157,7 +157,7 @@ class ProductServiceTest {
 
         ProductsPage result = productService.getProducts(null, SortType.NO, 1, 5);
 
-        List<ItemDto> row = result.getItems().get(0);
+        List<ItemDto> row = result.getItems().getFirst();
         assertThat(row).hasSize(3);
         assertThat(row.get(2).getId()).isEqualTo(-1L);
     }
