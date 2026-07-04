@@ -21,7 +21,6 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
 
-    @Autowired
     public CartService(CartItemRepository cartItemRepository, ProductRepository productRepository) {
         this.cartItemRepository = cartItemRepository;
         this.productRepository = productRepository;

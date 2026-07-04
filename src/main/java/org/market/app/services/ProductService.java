@@ -23,7 +23,6 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CartItemRepository cartItemRepository;
 
-    @Autowired
     public ProductService(ProductRepository productRepository, CartItemRepository cartItemRepository) {
         this.productRepository = productRepository;
         this.cartItemRepository = cartItemRepository;

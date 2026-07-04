@@ -19,7 +19,6 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final CartItemRepository cartItemRepository;
 
-    @Autowired
     public OrderService(OrderRepository orderRepository, CartItemRepository cartItemRepository) {
         this.orderRepository = orderRepository;
         this.cartItemRepository = cartItemRepository;
