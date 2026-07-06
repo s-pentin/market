@@ -3,6 +3,7 @@ package org.market.app.dto;
 import lombok.Builder;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -10,6 +11,6 @@ import java.util.List;
 public class OrderDto {
 
     private Long id;
-    private Long totalSum;
+    private BigDecimal totalSum;
     private List<OrderItemsDto> items;
 }

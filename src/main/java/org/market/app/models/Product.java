@@ -9,13 +9,15 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-@Data
+import java.math.BigDecimal;
+
+@Entity
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity
 public class Product {
 
     @Id
@@ -33,5 +35,5 @@ public class Product {
 
     @NotNull
     @Positive
-    private Long price;
+    private BigDecimal price;
 }

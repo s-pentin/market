@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 @Service
 public class ImageService {
@@ -18,20 +19,34 @@ public class ImageService {
     );
 
     private final ResourceLoader resourceLoader;
+    private final Pattern validPattern = Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9._-]*$");
 
     public ImageService(ResourceLoader resourceLoader) {
         this.resourceLoader = resourceLoader;
     }
 
     public Optional<Resource> findImage(String filename) {
+        if (!isValidFileName(filename)) {
+            return Optional.empty();
+        }
+
         Resource resource = resourceLoader.getResource("classpath:static/images/" + filename);
         return resource.exists() ? Optional.of(resource) : Optional.empty();
     }
 
     public MediaType resolveMediaType(String filename) {
-        String ext = filename.contains(".")
-                ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase()
-                : "";
+        if (filename == null || !filename.contains(".")) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+
+        String ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
         return MEDIA_TYPES.getOrDefault(ext, MediaType.APPLICATION_OCTET_STREAM);
+    }
+
+    protected boolean isValidFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return false;
+        }
+        return validPattern.matcher(fileName).matches();
     }
 }

@@ -3,22 +3,30 @@ package org.market.app.services;
 import org.market.app.dto.ItemDto;
 import org.market.app.dto.Paging;
 import org.market.app.dto.ProductsPage;
+import org.market.app.exceptions.ProductNotFoundException;
 import org.market.app.models.CartItem;
 import org.market.app.models.Product;
 import org.market.app.models.SortType;
 import org.market.app.repositories.CartItemRepository;
 import org.market.app.repositories.ProductRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
 
     private static final int ROW_SIZE = 3;
+    private static final int DEFAULT_PAGE_SIZE = 5;
+    private static final Set<Integer> ALLOWED_PAGE_SIZES = Set.of(2, 5, 10, 20, 50, 100);
 
     private final ProductRepository productRepository;
     private final CartItemRepository cartItemRepository;
@@ -30,6 +38,9 @@ public class ProductService {
 
     public ItemDto getProductById(Long id) {
         Product product = productRepository.getProductById(id);
+        if (product == null) {
+            throw new ProductNotFoundException();
+        }
         int count = cartItemRepository.findByProductId(product.getId())
                 .map(CartItem::getCount)
                 .orElse(0);
@@ -44,62 +55,61 @@ public class ProductService {
     }
 
     public ProductsPage getProducts(String search, SortType sort, Integer pageNumber, Integer pageSize) {
-        List<Product> products;
+        if (pageNumber == null || pageNumber < 1){
+            pageNumber = 1;
+        }
+        if (pageSize == null || !ALLOWED_PAGE_SIZES.contains(pageSize)) {
+            pageSize = DEFAULT_PAGE_SIZE;
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, toSort(sort));
+
+        Page<Product> page;
         if (search != null && !search.isBlank()) {
-            products = productRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(search, search);
+            page = productRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                    search, search, pageable);
         } else {
-            products = productRepository.findAll();
+            page = productRepository.findAll(pageable);
         }
 
-        if (!sort.equals(SortType.NO)) {
-            sortProductBy(sort, products);
-        }
+        List<Long> productIds = page.getContent().stream()
+                .map(Product::getId)
+                .toList();
 
-        int total = products.size();
-        products = getPagingProducts(products, pageNumber, pageSize);
-        List<ItemDto> itemDtos = products.stream()
-                .map(this::toItemDto)
+        Map<Long, Integer> cartCounts = cartItemRepository.findAllByProductIdIn(productIds).stream()
+                .collect(Collectors.toMap(ci -> ci.getProduct().getId(), CartItem::getCount));
+
+        List<ItemDto> itemDtos = page.getContent().stream()
+                .map(p -> toItemDto(p, cartCounts))
                 .toList();
 
         return ProductsPage.builder()
                 .items(splitIntoRows(itemDtos))
-                .paging(buildPaging(total, pageNumber, pageSize))
+                .paging(buildPaging(page))
                 .search(search)
                 .sort(sort)
                 .build();
     }
 
-    private void sortProductBy(SortType sort, List<Product> products) {
-        if (sort.equals(SortType.ALPHA)) {
-            products.sort(Comparator.comparing(Product::getTitle));
-        } else if (sort.equals(SortType.PRICE)) {
-            products.sort(Comparator.comparing(Product::getPrice));
-        }
+    private Sort toSort(SortType sortType) {
+        return switch (sortType) {
+            case ALPHA -> Sort.by("title");
+            case PRICE -> Sort.by("price");
+            case NO -> Sort.unsorted();
+        };
     }
 
-    private Paging buildPaging(int total, int pageNumber, int pageSize) {
+    private Paging buildPaging(Page<?> page) {
         Paging paging = new Paging();
-        paging.setPageNumber(pageNumber);
-        paging.setPageSize(pageSize);
-        paging.setHasPrevious(pageNumber > 1);
-        paging.setHasNext((long) pageNumber * pageSize < total);
-
+        paging.setPageNumber(page.getNumber() + 1);
+        paging.setPageSize(page.getSize());
+        paging.setHasPrevious(!page.isFirst());
+        paging.setHasNext(!page.isLast());
         return paging;
     }
 
-    private List<Product> getPagingProducts(List<Product> products, Integer pageNumber, Integer pageSize) {
-        int from = (pageNumber - 1) * pageSize;
-        int to = Math.min(from + pageSize, products.size());
-        if (from >= products.size()) {
-            return List.of();
-        }
-        return products.subList(from, to);
-    }
-
-    private ItemDto toItemDto(Product product) {
-        int count = cartItemRepository.findByProductId(product.getId())
-                .map(CartItem::getCount)
-                .orElse(0);
+    private ItemDto toItemDto(Product product, Map<Long, Integer> cartCounts) {
+        int count = cartCounts.getOrDefault(product.getId(), 0);
 
         return ItemDto.builder()
                 .id(product.getId())

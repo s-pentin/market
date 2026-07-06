@@ -7,10 +7,11 @@ import org.market.app.models.CartItem;
 import org.market.app.models.Product;
 import org.market.app.repositories.CartItemRepository;
 import org.market.app.repositories.ProductRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.market.app.exceptions.ProductNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -30,12 +31,12 @@ public class CartService {
     public ProductsInCart getAllProductsInCart() {
         List<CartItem> cartItems = cartItemRepository.findAll();
 
-        long totalCost = 0;
+        BigDecimal totalCost = BigDecimal.ZERO;
         List<ItemDto> items = new ArrayList<>();
         for (CartItem cartItem: cartItems) {
             ItemDto item = toItem(cartItem);
             items.add(item);
-            totalCost += item.getCount() * item.getPrice();
+            totalCost = totalCost.add(item.getPrice().multiply(BigDecimal.valueOf(item.getCount())));
         }
 
         return ProductsInCart.builder()
@@ -62,7 +63,7 @@ public class CartService {
         } else {
             Product product = productRepository
                     .findById(productId)
-                    .orElseThrow();
+                    .orElseThrow(() -> new ProductNotFoundException("Product not found: " + productId));
 
             CartItem cart = new CartItem();
             cart.setProduct(product);

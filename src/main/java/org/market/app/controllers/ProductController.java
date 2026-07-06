@@ -5,7 +5,6 @@ import org.market.app.models.Action;
 import org.market.app.models.SortType;
 import org.market.app.services.CartService;
 import org.market.app.services.ProductService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -72,13 +71,9 @@ public class ProductController {
     }
 
     @PostMapping("/items/{id}")
-    public String updateProductCountFromItem(
-            @PathVariable Long id,
-            @RequestParam Action action,
-            Model model) {
+    public String updateProductCountFromItem(@PathVariable Long id, @RequestParam Action action) {
 
         cartService.changeCount(id, action);
-        model.addAttribute("item", productService.getProductById(id));
-        return "item";
+        return "redirect:/items/{id}";
     }
 }

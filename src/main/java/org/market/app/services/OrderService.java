@@ -3,14 +3,17 @@ package org.market.app.services;
 import jakarta.transaction.Transactional;
 import org.market.app.dto.OrderDto;
 import org.market.app.dto.OrderItemsDto;
+import org.market.app.exceptions.EmptyCartException;
+import org.market.app.exceptions.OrderNotFoundException;
 import org.market.app.models.CartItem;
 import org.market.app.models.Orders;
 import org.market.app.models.OrderItems;
 import org.market.app.repositories.CartItemRepository;
 import org.market.app.repositories.OrderRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -30,7 +33,7 @@ public class OrderService {
     }
 
     public OrderDto getOrderById(Long id) {
-        Orders order = orderRepository.findById(id).orElseThrow(() -> new RuntimeException("Order not found: " + id));
+        Orders order = orderRepository.findById(id).orElseThrow(() -> new OrderNotFoundException("Order not found: " + id));
         return toOrderDto(order);
     }
 
@@ -38,20 +41,29 @@ public class OrderService {
     public Long createOrder() {
         List<CartItem> cartItems = cartItemRepository.findAll();
 
-        Orders orders = new Orders();
+        if (cartItems.isEmpty()) {
+            throw new EmptyCartException();
+        }
+
         List<OrderItems> items = cartItems.stream()
                 .map(cartItem ->
                         OrderItems.builder()
-                                .orders(orders)
                                 .title(cartItem.getProduct().getTitle())
                                 .price(cartItem.getProduct().getPrice())
                                 .count(cartItem.getCount())
                                 .build()
                 ).toList();
 
-        long totalSum = items.stream().mapToLong(i -> i.getPrice() * i.getCount()).sum();
-        orders.setTotalSum(totalSum);
-        orders.setItems(items);
+        BigDecimal totalSum = items.stream()
+                .map(i -> i.getPrice().multiply(BigDecimal.valueOf(i.getCount())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Orders orders = Orders.builder()
+                .totalSum(totalSum)
+                .items(new ArrayList<>())
+                .build();
+
+        items.forEach(orders::addItem);
 
         Orders saved = orderRepository.save(orders);
         cartItemRepository.deleteAll(cartItems);

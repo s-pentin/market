@@ -3,6 +3,8 @@ package org.market.app.dto;
 import lombok.Builder;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 @Builder
 public class ItemDto {
@@ -11,6 +13,6 @@ public class ItemDto {
     String title;
     String description;
     String imgPath;
-    long price;
+    BigDecimal price;
     int count;
 }
