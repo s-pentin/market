@@ -12,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,14 +35,14 @@ class CartServiceTest {
 
     @Test
     void getAllProductsInCart_returnsItemsAndTotalCost() {
-        Product product = new Product(1L, "Ball", "desc", "/img.jpg", 100L);
+        Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, product, 2);
         when(cartItemRepository.findAll()).thenReturn(List.of(cartItem));
 
         ProductsInCart result = cartService.getAllProductsInCart();
 
         assertThat(result.getItems()).hasSize(1);
-        assertThat(result.getTotalCost()).isEqualTo(200L);
+        assertThat(result.getTotalCost()).isEqualByComparingTo(BigDecimal.valueOf(200));
     }
 
     @Test
@@ -51,12 +52,12 @@ class CartServiceTest {
         ProductsInCart result = cartService.getAllProductsInCart();
 
         assertThat(result.getItems()).isEmpty();
-        assertThat(result.getTotalCost()).isEqualTo(0L);
+        assertThat(result.getTotalCost()).isEqualByComparingTo(BigDecimal.valueOf(0));
     }
 
     @Test
     void changeCount_plus_existingItem_incrementsCount() {
-        Product product = new Product(1L, "Ball", null, null, 100L);
+        Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, product, 1);
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.of(cartItem));
 
@@ -68,7 +69,7 @@ class CartServiceTest {
 
     @Test
     void changeCount_plus_newItem_createsCartItemWithCountOne() {
-        Product product = new Product(1L, "Ball", null, null, 100L);
+        Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.empty());
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
 
@@ -80,7 +81,7 @@ class CartServiceTest {
 
     @Test
     void changeCount_minus_countGreaterThanOne_decrementsCount() {
-        Product product = new Product(1L, "Ball", null, null, 100L);
+        Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, product, 3);
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.of(cartItem));
 
@@ -92,7 +93,7 @@ class CartServiceTest {
 
     @Test
     void changeCount_minus_countEqualsOne_deletesItem() {
-        Product product = new Product(1L, "Ball", null, null, 100L);
+        Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, product, 1);
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.of(cartItem));
 
@@ -103,7 +104,7 @@ class CartServiceTest {
 
     @Test
     void changeCount_delete_deletesItem() {
-        Product product = new Product(1L, "Ball", null, null, 100L);
+        Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, product, 5);
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.of(cartItem));
 

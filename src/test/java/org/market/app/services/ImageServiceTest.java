@@ -76,4 +76,36 @@ class ImageServiceTest {
     void resolveMediaType_noExtension_returnsOctetStream() {
         assertThat(imageService.resolveMediaType("filename")).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
     }
+
+    @Test
+    void resolveMediaType_nullOrEmpty_returnsOctetStream() {
+        assertThat(imageService.resolveMediaType(null)).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+        assertThat(imageService.resolveMediaType("")).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+    }
+
+    @Test
+    void isValidFileName_shouldAcceptValidNames() {
+        assertThat(imageService.isValidFileName("ball.png")).isTrue();
+        assertThat(imageService.isValidFileName("my_image_123.jpg")).isTrue();
+        assertThat(imageService.isValidFileName("photo-1.jpeg")).isTrue();
+        assertThat(imageService.isValidFileName("file_with_underscore.gif")).isTrue();
+    }
+
+    @Test
+    void isValidFileName_shouldRejectInvalidNames() {
+        assertThat(imageService.isValidFileName(null)).isFalse();
+        assertThat(imageService.isValidFileName("")).isFalse();
+        assertThat(imageService.isValidFileName("   ")).isFalse();
+        assertThat(imageService.isValidFileName("../hack.png")).isFalse();
+        assertThat(imageService.isValidFileName("/etc/passwd")).isFalse();
+        assertThat(imageService.isValidFileName("file@name.png")).isFalse();
+        assertThat(imageService.isValidFileName("file#name.png")).isFalse();
+        assertThat(imageService.isValidFileName(".hidden.png")).isFalse();
+    }
+
+    @Test
+    void findImage_shouldReturnEmptyForInvalidFilename() {
+        assertThat(imageService.findImage("../malicious.png")).isEmpty();
+        assertThat(imageService.findImage(null)).isEmpty();
+    }
 }

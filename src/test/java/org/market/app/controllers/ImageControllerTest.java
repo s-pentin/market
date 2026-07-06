@@ -29,4 +29,16 @@ class ImageControllerTest {
         mockMvc.perform(get("/images/nonexistent.jpg"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void getImage_invalidFilename_returns404() throws Exception {
+        mockMvc.perform(get("/images/../hack.png"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/images/null"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/images/file@name.png"))
+                .andExpect(status().isNotFound());
+    }
 }

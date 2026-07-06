@@ -2,13 +2,20 @@ package org.market.app.repositories;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.market.app.infra.TestPostgresContainer;
 import org.market.app.models.Product;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SpringBootTest
+@Transactional
 class ProductRepositoryTest extends TestPostgresContainer {
 
     @Autowired
@@ -21,55 +28,70 @@ class ProductRepositoryTest extends TestPostgresContainer {
 
     @Test
     void findAll_returnsAllSavedProducts() {
-        productRepository.save(new Product(null, "Ball", null, null, 100L));
-        productRepository.save(new Product(null, "Book", null, null, 50L));
+        productRepository.save(new Product(null, "Ball", null, null, BigDecimal.valueOf(100)));
+        productRepository.save(new Product(null, "Book", null, null, BigDecimal.valueOf(50)));
 
         assertThat(productRepository.findAll()).hasSize(2);
     }
 
     @Test
     void findByTitle_returnsMatchingByTitle() {
-        productRepository.save(new Product(null, "Basketball", null, null, 100L));
-        productRepository.save(new Product(null, "Football", null, null, 80L));
-        productRepository.save(new Product(null, "Cup", null, null, 20L));
+        productRepository.save(new Product(null, "Basketball", null, null, BigDecimal.valueOf(100)));
+        productRepository.save(new Product(null, "Football", null, null, BigDecimal.valueOf(80)));
+        productRepository.save(new Product(null, "Cup", null, null, BigDecimal.valueOf(20)));
 
-        List<Product> result = productRepository
-                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("ball", "ball");
+        Page<Product> result = productRepository
+                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("ball", "ball", Pageable.unpaged());
 
-        assertThat(result).hasSize(2);
-        assertThat(result).extracting(Product::getTitle).containsExactlyInAnyOrder("Basketball", "Football");
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent()).extracting(Product::getTitle)
+                .containsExactlyInAnyOrder("Basketball", "Football");
     }
 
     @Test
     void findByDescription_returnsMatchingByDescription() {
-        productRepository.save(new Product(null, "Cup", "Kitchen ball toy", null, 20L));
-        productRepository.save(new Product(null, "Pen", "Writing tool", null, 10L));
+        productRepository.save(new Product(null, "Cup", "Kitchen ball toy", null, BigDecimal.valueOf(20)));
+        productRepository.save(new Product(null, "Pen", "Writing tool", null, BigDecimal.valueOf(10)));
 
-        List<Product> result = productRepository
-                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("ball", "ball");
+        Page<Product> result = productRepository
+                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("ball", "ball", Pageable.unpaged());
 
-        assertThat(result).hasSize(1);
-        assertThat(result.getFirst().getTitle()).isEqualTo("Cup");
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().getFirst().getTitle()).isEqualTo("Cup");
     }
 
     @Test
     void findByTitle_caseInsensitive_returnsMatch() {
-        productRepository.save(new Product(null, "BASKETBALL", null, null, 100L));
+        productRepository.save(new Product(null, "BASKETBALL", null, null, BigDecimal.valueOf(100)));
 
-        List<Product> result = productRepository
-                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("basketball", "basketball");
+        Page<Product> result = productRepository
+                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("basketball", "basketball", Pageable.unpaged());
 
-        assertThat(result).hasSize(1);
+        assertThat(result.getContent()).hasSize(1);
     }
 
     @Test
     void getProductById_returnsCorrectProduct() {
-        Product saved = productRepository.save(new Product(null, "Ball", null, null, 50L));
+        Product saved = productRepository.save(new Product(null, "Ball", null, null, BigDecimal.valueOf(50)));
 
         Product result = productRepository.getProductById(saved.getId());
 
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("Ball");
         assertThat(result.getId()).isEqualTo(saved.getId());
+    }
+
+    @Test
+    void findAll_withPageable_returnsPaginatedResult() {
+        for (int i = 1; i <= 5; i++) {
+            productRepository.save(new Product(null, "Product " + i, null, null, BigDecimal.valueOf(i * 10)));
+        }
+
+        Page<Product> page = productRepository.findAll(
+                org.springframework.data.domain.PageRequest.of(0, 3));
+
+        assertThat(page.getContent()).hasSize(3);
+        assertThat(page.getTotalElements()).isEqualTo(5);
+        assertThat(page.getTotalPages()).isEqualTo(2);
     }
 }

@@ -2,14 +2,20 @@ package org.market.app.repositories;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.market.app.infra.TestPostgresContainer;
 import org.market.app.models.CartItem;
 import org.market.app.models.Product;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SpringBootTest
+@Transactional
 class CartItemRepositoryTest extends TestPostgresContainer {
 
     @Autowired
@@ -26,7 +32,7 @@ class CartItemRepositoryTest extends TestPostgresContainer {
 
     @Test
     void findByProductId_found_returnsCartItem() {
-        Product product = productRepository.save(new Product(null, "Ball", null, null, 100L));
+        Product product = productRepository.save(new Product(null, "Ball", null, null, BigDecimal.valueOf(100)));
         cartItemRepository.save(new CartItem(null, product, 2));
 
         Optional<CartItem> result = cartItemRepository.findByProductId(product.getId());
@@ -45,7 +51,7 @@ class CartItemRepositoryTest extends TestPostgresContainer {
 
     @Test
     void save_persistsCartItem() {
-        Product product = productRepository.save(new Product(null, "Book", null, null, 50L));
+        Product product = productRepository.save(new Product(null, "Book", null, null, BigDecimal.valueOf(50)));
         CartItem saved = cartItemRepository.save(new CartItem(null, product, 1));
 
         assertThat(saved.getId()).isNotNull();

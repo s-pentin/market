@@ -2,12 +2,15 @@ package org.market.app.controllers;
 
 import org.junit.jupiter.api.Test;
 import org.market.app.dto.OrderDto;
+import org.market.app.exceptions.EmptyCartException;
+import org.market.app.exceptions.OrderNotFoundException;
 import org.market.app.services.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
@@ -36,7 +39,7 @@ class OrderControllerTest {
 
     @Test
     void getOrderById_returns200WithNewOrderFalseByDefault() throws Exception {
-        OrderDto order = OrderDto.builder().id(1L).totalSum(100L).items(List.of()).build();
+        OrderDto order = OrderDto.builder().id(1L).totalSum(BigDecimal.valueOf(100)).items(List.of()).build();
         when(orderService.getOrderById(1L)).thenReturn(order);
 
         mockMvc.perform(get("/orders/1"))
@@ -48,7 +51,7 @@ class OrderControllerTest {
 
     @Test
     void getOrderById_withNewOrderTrue_modelHasTrue() throws Exception {
-        OrderDto order = OrderDto.builder().id(1L).totalSum(100L).items(List.of()).build();
+        OrderDto order = OrderDto.builder().id(1L).totalSum(BigDecimal.valueOf(100)).items(List.of()).build();
         when(orderService.getOrderById(1L)).thenReturn(order);
 
         mockMvc.perform(get("/orders/1").param("newOrder", "true"))
@@ -63,5 +66,24 @@ class OrderControllerTest {
         mockMvc.perform(post("/buy"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/orders/42?newOrder=true"));
+    }
+
+    @Test
+    void buy_emptyCart_redirectsToCartWithFlashError() throws Exception {
+        when(orderService.createOrder()).thenThrow(new EmptyCartException());
+
+        mockMvc.perform(post("/buy"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/cart"))
+                .andExpect(flash().attributeExists("error"));
+    }
+
+    @Test
+    void getOrderById_notFound_rendersNotFoundView() throws Exception {
+        when(orderService.getOrderById(99L)).thenThrow(new OrderNotFoundException());
+
+        mockMvc.perform(get("/orders/99"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("not_found"));
     }
 }

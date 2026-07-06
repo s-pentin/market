@@ -9,16 +9,23 @@ import org.market.app.models.Product;
 import org.market.app.models.SortType;
 import org.market.app.repositories.CartItemRepository;
 import org.market.app.repositories.ProductRepository;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
-import java.util.ArrayList;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,7 +44,7 @@ class ProductServiceTest {
 
     @Test
     void getProductById_returnsItemDtoWithCartCount() {
-        Product product = new Product(1L, "Ball", "desc", "/img.jpg", 100L);
+        Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, product, 3);
 
         when(productRepository.getProductById(1L)).thenReturn(product);
@@ -52,7 +59,7 @@ class ProductServiceTest {
 
     @Test
     void getProductById_notInCart_returnsZeroCount() {
-        Product product = new Product(1L, "Ball", "desc", "/img.jpg", 100L);
+        Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
 
         when(productRepository.getProductById(1L)).thenReturn(product);
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.empty());
@@ -64,12 +71,12 @@ class ProductServiceTest {
 
     @Test
     void getProducts_noSearch_returnsAllProducts() {
-        List<Product> products = new ArrayList<>(List.of(
-                new Product(1L, "Apple", null, null, 50L),
-                new Product(2L, "Banana", null, null, 30L)
-        ));
-        when(productRepository.findAll()).thenReturn(products);
-        when(cartItemRepository.findByProductId(anyLong())).thenReturn(Optional.empty());
+        List<Product> products = List.of(
+                new Product(1L, "Apple", null, null, BigDecimal.valueOf(50)),
+                new Product(2L, "Banana", null, null, BigDecimal.valueOf(30))
+        );
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(products));
+        when(cartItemRepository.findAllByProductIdIn(anyCollection())).thenReturn(List.of());
 
         ProductsPage result = productService.getProducts(null, SortType.NO, 1, 5);
 
@@ -80,85 +87,124 @@ class ProductServiceTest {
 
     @Test
     void getProducts_withSearch_filtersProducts() {
-        List<Product> filtered = List.of(new Product(1L, "Ball", null, null, 100L));
-        when(productRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase("ball", "ball"))
-                .thenReturn(filtered);
-        when(cartItemRepository.findByProductId(anyLong())).thenReturn(Optional.empty());
+        List<Product> filtered = List.of(new Product(1L, "Ball", null, null, BigDecimal.valueOf(100)));
+        when(productRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                eq("ball"), eq("ball"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(filtered));
+        when(cartItemRepository.findAllByProductIdIn(anyCollection())).thenReturn(List.of());
 
         ProductsPage result = productService.getProducts("ball", SortType.NO, 1, 5);
 
         assertThat(result.getSearch()).isEqualTo("ball");
-        verify(productRepository).findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(eq("ball"), eq("ball"));
+        verify(productRepository).findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                eq("ball"), eq("ball"), any(Pageable.class));
     }
 
     @Test
-    void getProducts_alphaSort_sortsByTitle() {
-        List<Product> products = new ArrayList<>(List.of(
-                new Product(1L, "Carrot", null, null, 20L),
-                new Product(2L, "Apple", null, null, 30L),
-                new Product(3L, "Banana", null, null, 25L)
-        ));
-        when(productRepository.findAll()).thenReturn(products);
-        when(cartItemRepository.findByProductId(anyLong())).thenReturn(Optional.empty());
+    void getProducts_alphaSort_passesTitleSortToRepository() {
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
 
-        ProductsPage result = productService.getProducts(null, SortType.ALPHA, 1, 5);
+        productService.getProducts(null, SortType.ALPHA, 1, 5);
 
-        List<ItemDto> row = result.getItems().getFirst();
-        assertThat(row.get(0).getTitle()).isEqualTo("Apple");
-        assertThat(row.get(1).getTitle()).isEqualTo("Banana");
-        assertThat(row.get(2).getTitle()).isEqualTo("Carrot");
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by("title"));
     }
 
     @Test
-    void getProducts_priceSort_sortsByPrice() {
-        List<Product> products = new ArrayList<>(List.of(
-                new Product(1L, "Carrot", null, null, 20L),
-                new Product(2L, "Apple", null, null, 50L),
-                new Product(3L, "Banana", null, null, 30L)
-        ));
-        when(productRepository.findAll()).thenReturn(products);
-        when(cartItemRepository.findByProductId(anyLong())).thenReturn(Optional.empty());
+    void getProducts_priceSort_passesPriceSortToRepository() {
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
 
-        ProductsPage result = productService.getProducts(null, SortType.PRICE, 1, 5);
+        productService.getProducts(null, SortType.PRICE, 1, 5);
 
-        List<ItemDto> row = result.getItems().getFirst();
-        assertThat(row.get(0).getPrice()).isEqualTo(20L);
-        assertThat(row.get(1).getPrice()).isEqualTo(30L);
-        assertThat(row.get(2).getPrice()).isEqualTo(50L);
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getSort()).isEqualTo(Sort.by("price"));
     }
 
     @Test
-    void getProducts_pagination_secondPage_returnsCorrectItems() {
-        List<Product> products = new ArrayList<>();
-        for (int i = 1; i <= 7; i++) {
-            products.add(new Product((long) i, "Product " + i, null, null, (long) i * 10));
-        }
-        when(productRepository.findAll()).thenReturn(products);
-        when(cartItemRepository.findByProductId(anyLong())).thenReturn(Optional.empty());
+    void getProducts_pagination_secondPage_passesCorrectPageable() {
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
 
-        ProductsPage result = productService.getProducts(null, SortType.NO, 2, 3);
+        productService.getProducts(null, SortType.NO, 2, 2);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(1); // 0-based: page 2 → index 1
+        assertThat(captor.getValue().getPageSize()).isEqualTo(2);
+    }
+
+    @Test
+    void getProducts_paging_hasNextAndPrevious() {
+        List<Product> products = List.of(new Product(1L, "X", null, null, BigDecimal.valueOf(10)));
+        Page<Product> page = new PageImpl<>(products, PageRequest.of(1, 5), 15);
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(page);
+        when(cartItemRepository.findAllByProductIdIn(anyCollection())).thenReturn(List.of());
+
+        ProductsPage result = productService.getProducts(null, SortType.NO, 2, 5);
 
         assertThat(result.getPaging().getPageNumber()).isEqualTo(2);
         assertThat(result.getPaging().isHasPrevious()).isTrue();
         assertThat(result.getPaging().isHasNext()).isTrue();
-        // страница 2, размер 3 → товары 4, 5, 6 → одна строка из 3
-        assertThat(result.getItems()).hasSize(1);
-        assertThat(result.getItems().getFirst().getFirst().getTitle()).isEqualTo("Product 4");
     }
 
     @Test
     void getProducts_splitIntoRows_padsLastRowWithStubs() {
-        List<Product> products = new ArrayList<>(List.of(
-                new Product(1L, "AAA", null, null, 10L),
-                new Product(2L, "BBB", null, null, 20L)
-        ));
-        when(productRepository.findAll()).thenReturn(products);
-        when(cartItemRepository.findByProductId(anyLong())).thenReturn(Optional.empty());
+        List<Product> products = List.of(
+                new Product(1L, "AAA", null, null, BigDecimal.valueOf(10)),
+                new Product(2L, "BBB", null, null, BigDecimal.valueOf(20))
+        );
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(products));
+        when(cartItemRepository.findAllByProductIdIn(anyCollection())).thenReturn(List.of());
 
         ProductsPage result = productService.getProducts(null, SortType.NO, 1, 5);
 
         List<ItemDto> row = result.getItems().getFirst();
         assertThat(row).hasSize(3);
         assertThat(row.get(2).getId()).isEqualTo(-1L);
+    }
+
+    @Test
+    void getProducts_pageNumberZero_normalizedToOne() {
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        productService.getProducts(null, SortType.NO, 0, 5);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(0); // 0-based index of page 1
+    }
+
+    @Test
+    void getProducts_pageNumberNegative_normalizedToOne() {
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        productService.getProducts(null, SortType.NO, -5, 5);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(0);
+    }
+
+    @Test
+    void getProducts_invalidPageSize_normalizedToDefault() {
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        productService.getProducts(null, SortType.NO, 1, 7);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(5);
+    }
+
+    @Test
+    void getProducts_validPageSize_usedAsIs() {
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+        productService.getProducts(null, SortType.NO, 1, 20);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(productRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(20);
     }
 }

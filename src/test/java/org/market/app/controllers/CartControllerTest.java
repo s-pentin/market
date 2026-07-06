@@ -9,6 +9,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
@@ -27,7 +28,7 @@ class CartControllerTest {
     private CartService cartService;
 
     private ProductsInCart emptyCart() {
-        return ProductsInCart.builder().items(List.of()).totalCost(0L).build();
+        return ProductsInCart.builder().items(List.of()).totalCost(BigDecimal.valueOf(0)).build();
     }
 
     @Test
@@ -42,35 +43,31 @@ class CartControllerTest {
 
     @Test
     void getCart_modelHasCorrectTotal() throws Exception {
-        ProductsInCart cart = ProductsInCart.builder().items(List.of()).totalCost(500L).build();
+        ProductsInCart cart = ProductsInCart.builder().items(List.of()).totalCost(BigDecimal.valueOf(500)).build();
         when(cartService.getAllProductsInCart()).thenReturn(cart);
 
         mockMvc.perform(get("/cart/items"))
-                .andExpect(model().attribute("total", 500L));
+                .andExpect(model().attribute("total", BigDecimal.valueOf(500)));
     }
 
     @Test
-    void updateCart_plus_callsServiceAndReturnsCart() throws Exception {
-        when(cartService.getAllProductsInCart()).thenReturn(emptyCart());
-
+    void updateCart_plus_redirectsToCart() throws Exception {
         mockMvc.perform(post("/cart/items")
                         .param("id", "1")
                         .param("action", "PLUS"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("cart"));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/cart/items"));
 
         verify(cartService).changeCount(1L, Action.PLUS);
     }
 
     @Test
-    void updateCart_delete_callsServiceAndReturnsCart() throws Exception {
-        when(cartService.getAllProductsInCart()).thenReturn(emptyCart());
-
+    void updateCart_delete_redirectsToCart() throws Exception {
         mockMvc.perform(post("/cart/items")
                         .param("id", "2")
                         .param("action", "DELETE"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("cart"));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/cart/items"));
 
         verify(cartService).changeCount(2L, Action.DELETE);
     }

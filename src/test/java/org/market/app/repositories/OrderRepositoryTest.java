@@ -2,15 +2,20 @@ package org.market.app.repositories;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.market.app.infra.TestPostgresContainer;
 import org.market.app.models.OrderItems;
 import org.market.app.models.Orders;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SpringBootTest
+@Transactional
 class OrderRepositoryTest extends TestPostgresContainer {
 
     @Autowired
@@ -23,28 +28,31 @@ class OrderRepositoryTest extends TestPostgresContainer {
 
     @Test
     void save_withoutItems_persistsOrder() {
-        Orders order = new Orders();
-        order.setTotalSum(100L);
-        order.setItems(new ArrayList<>());
+        Orders order = Orders.builder()
+                .totalSum(BigDecimal.valueOf(100))
+                .items(new ArrayList<>())
+                .build();
 
         Orders saved = orderRepository.save(order);
 
         assertThat(saved.getId()).isNotNull();
-        assertThat(saved.getTotalSum()).isEqualTo(100L);
+        assertThat(saved.getTotalSum()).isEqualByComparingTo(BigDecimal.valueOf(100));
     }
 
     @Test
     void save_withItems_cascadeSavesOrderItems() {
-        Orders order = new Orders();
-        order.setTotalSum(300L);
+        Orders order = Orders.builder()
+                .totalSum(BigDecimal.valueOf(300))
+                .items(new ArrayList<>())
+                .build();
 
         OrderItems item = OrderItems.builder()
                 .orders(order)
                 .title("Ball")
-                .price(100L)
+                .price(BigDecimal.valueOf(100))
                 .count(3)
                 .build();
-        order.setItems(new ArrayList<>(List.of(item)));
+        order.getItems().add(item);
 
         Orders saved = orderRepository.save(order);
 
@@ -56,13 +64,8 @@ class OrderRepositoryTest extends TestPostgresContainer {
 
     @Test
     void findAll_returnsAllOrders() {
-        Orders o1 = new Orders();
-        o1.setTotalSum(100L);
-        o1.setItems(new ArrayList<>());
-
-        Orders o2 = new Orders();
-        o2.setTotalSum(200L);
-        o2.setItems(new ArrayList<>());
+        Orders o1 = Orders.builder().totalSum(BigDecimal.valueOf(100)).items(new ArrayList<>()).build();
+        Orders o2 = Orders.builder().totalSum(BigDecimal.valueOf(200)).items(new ArrayList<>()).build();
 
         orderRepository.save(o1);
         orderRepository.save(o2);

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.market.app.dto.ItemDto;
 import org.market.app.dto.Paging;
 import org.market.app.dto.ProductsPage;
+import org.market.app.exceptions.ProductNotFoundException;
 import org.market.app.models.Action;
 import org.market.app.models.SortType;
 import org.market.app.services.CartService;
@@ -13,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -87,7 +89,7 @@ class ProductControllerTest {
 
     @Test
     void getProductById_returns200WithItem() throws Exception {
-        ItemDto item = ItemDto.builder().id(1L).title("Ball").price(100L).count(0).build();
+        ItemDto item = ItemDto.builder().id(1L).title("Ball").price(BigDecimal.valueOf(100)).count(0).build();
         when(productService.getProductById(1L)).thenReturn(item);
 
         mockMvc.perform(get("/items/1"))
@@ -111,14 +113,20 @@ class ProductControllerTest {
     }
 
     @Test
-    void postItemById_plus_returns200WithItem() throws Exception {
-        ItemDto item = ItemDto.builder().id(1L).title("Ball").price(100L).count(1).build();
-        when(productService.getProductById(1L)).thenReturn(item);
-
+    void postItemById_plus_redirectsToItem() throws Exception {
         mockMvc.perform(post("/items/1").param("action", "PLUS"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("item"));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/items/1"));
 
         verify(cartService).changeCount(1L, Action.PLUS);
+    }
+
+    @Test
+    void getProductById_notFound_rendersNotFoundView() throws Exception {
+        when(productService.getProductById(99L)).thenThrow(new ProductNotFoundException());
+
+        mockMvc.perform(get("/items/99"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("not_found"));
     }
 }
