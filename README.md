@@ -9,6 +9,7 @@
 - **Spring Web MVC** — веб-слой, Thymeleaf-шаблоны
 - **Spring Data JPA + Hibernate** — доступ к данным
 - **PostgreSQL** — база данных
+- **Flyway** - миграции баз данных
 - **Gradle** — система сборки
 - **Docker / Docker Compose** — контейнеризация
 - **JUnit 5, Mockito, Testcontainers** — тестирование
