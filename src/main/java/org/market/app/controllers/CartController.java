@@ -31,14 +31,9 @@ public class CartController {
 
    // уменьшение/увеличение количества товара в корзине со страницы корзины
     @PostMapping("/items")
-    public String updateCart(
-            @RequestParam Long id,
-            @RequestParam Action action,
-            Model model) {
+    public String updateCart(@RequestParam Long id, @RequestParam Action action) {
         cartService.changeCount(id, action);
-        fillCart(model);
-
-        return "cart";
+        return "redirect:/cart/items";
     }
 
     private void fillCart(Model model) {
