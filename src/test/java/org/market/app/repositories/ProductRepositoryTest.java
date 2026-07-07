@@ -8,14 +8,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-@Transactional
 class ProductRepositoryTest extends TestPostgresContainer {
 
     @Autowired
@@ -71,14 +70,14 @@ class ProductRepositoryTest extends TestPostgresContainer {
     }
 
     @Test
-    void getProductById_returnsCorrectProduct() {
+    void findById_returnsCorrectProduct() {
         Product saved = productRepository.save(new Product(null, "Ball", null, null, BigDecimal.valueOf(50)));
 
-        Product result = productRepository.getProductById(saved.getId());
+        Optional<Product> result = productRepository.findById(saved.getId());
 
-        assertThat(result).isNotNull();
-        assertThat(result.getTitle()).isEqualTo("Ball");
-        assertThat(result.getId()).isEqualTo(saved.getId());
+        assertThat(result).isPresent();
+        assertThat(result.get().getTitle()).isEqualTo("Ball");
+        assertThat(result.get().getId()).isEqualTo(saved.getId());
     }
 
     @Test

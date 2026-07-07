@@ -47,7 +47,7 @@ class ProductServiceTest {
         Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, product, 3);
 
-        when(productRepository.getProductById(1L)).thenReturn(product);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.of(cartItem));
 
         ItemDto result = productService.getProductById(1L);
@@ -61,7 +61,7 @@ class ProductServiceTest {
     void getProductById_notInCart_returnsZeroCount() {
         Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
 
-        when(productRepository.getProductById(1L)).thenReturn(product);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
         when(cartItemRepository.findByProductId(1L)).thenReturn(Optional.empty());
 
         ItemDto result = productService.getProductById(1L);
