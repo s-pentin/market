@@ -6,7 +6,7 @@ import org.market.app.infra.TestPostgresContainer;
 import org.market.app.models.OrderItems;
 import org.market.app.models.Orders;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -14,7 +14,7 @@ import java.util.ArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+@DataJpaTest
 @Transactional
 class OrderRepositoryTest extends TestPostgresContainer {
 

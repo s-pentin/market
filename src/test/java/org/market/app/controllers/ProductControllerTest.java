@@ -126,7 +126,7 @@ class ProductControllerTest {
         when(productService.getProductById(99L)).thenThrow(new ProductNotFoundException());
 
         mockMvc.perform(get("/items/99"))
-                .andExpect(status().isOk())
+                .andExpect(status().isNotFound())
                 .andExpect(view().name("not_found"));
     }
 }

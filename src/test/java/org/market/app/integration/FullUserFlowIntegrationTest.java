@@ -51,11 +51,15 @@ class FullUserFlowIntegrationTest extends TestPostgresContainer {
                 .andExpect(status().isOk())
                 .andExpect(model().attribute("items", hasSize(greaterThan(0))));
 
-        mockMvc.perform(post("/buy"))
+        String orderUrl = mockMvc.perform(post("/buy"))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("/orders/*?newOrder=true"));
+                .andExpect(redirectedUrlPattern("/orders/*?newOrder=true"))
+                .andReturn()
+                .getResponse()
+                .getRedirectedUrl();
 
-        mockMvc.perform(get("/orders/1?newOrder=true"))
+        assert orderUrl != null;
+        mockMvc.perform(get(orderUrl))
                 .andExpect(status().isOk())
                 .andExpect(view().name("order"));
 

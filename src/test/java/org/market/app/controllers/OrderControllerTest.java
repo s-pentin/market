@@ -5,6 +5,7 @@ import org.market.app.dto.OrderDto;
 import org.market.app.exceptions.EmptyCartException;
 import org.market.app.exceptions.OrderNotFoundException;
 import org.market.app.services.OrderService;
+import org.market.app.usecases.PlaceOrderUseCase;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -26,6 +27,9 @@ class OrderControllerTest {
 
     @MockitoBean
     private OrderService orderService;
+
+    @MockitoBean
+    private PlaceOrderUseCase placeOrderUseCase;
 
     @Test
     void getOrders_returns200WithOrdersList() throws Exception {
@@ -61,7 +65,7 @@ class OrderControllerTest {
 
     @Test
     void buy_redirectsToOrderPageWithNewOrderTrue() throws Exception {
-        when(orderService.createOrder()).thenReturn(42L);
+        when(placeOrderUseCase.execute()).thenReturn(42L);
 
         mockMvc.perform(post("/buy"))
                 .andExpect(status().is3xxRedirection())
@@ -70,11 +74,11 @@ class OrderControllerTest {
 
     @Test
     void buy_emptyCart_redirectsToCartWithFlashError() throws Exception {
-        when(orderService.createOrder()).thenThrow(new EmptyCartException());
+        when(placeOrderUseCase.execute()).thenThrow(new EmptyCartException());
 
         mockMvc.perform(post("/buy"))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/cart"))
+                .andExpect(redirectedUrl("/cart/items"))
                 .andExpect(flash().attributeExists("error"));
     }
 
@@ -83,7 +87,7 @@ class OrderControllerTest {
         when(orderService.getOrderById(99L)).thenThrow(new OrderNotFoundException());
 
         mockMvc.perform(get("/orders/99"))
-                .andExpect(status().isOk())
+                .andExpect(status().isNotFound())
                 .andExpect(view().name("not_found"));
     }
 }
