@@ -14,7 +14,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(EmptyCartException.class)
     public String handleEmptyCart(RedirectAttributes redirectAttributes) {
-        redirectAttributes.addFlashAttribute("error", "Empty cart");
+        redirectAttributes.addFlashAttribute("error",
+                "Корзина пуста. Добавьте хотя бы один товар перед оформлением заказа.");
         return "redirect:/cart/items";
     }
 

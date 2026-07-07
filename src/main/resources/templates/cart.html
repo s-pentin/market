@@ -8,6 +8,12 @@
 <body>
 <div class="container py-4" style="max-width:800px">
 
+    <div th:if="${error}" class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+        <strong>Ошибка!</strong>
+        <span th:text="${error}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3">Корзина</h1>
         <div>
