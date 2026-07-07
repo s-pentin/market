@@ -3,7 +3,6 @@ package org.market.app.controllers;
 import org.market.app.dto.ProductsInCart;
 import org.market.app.models.Action;
 import org.market.app.services.CartService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;

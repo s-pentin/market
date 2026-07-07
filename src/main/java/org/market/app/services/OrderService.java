@@ -6,6 +6,7 @@ import org.market.app.exceptions.OrderNotFoundException;
 import org.market.app.models.Orders;
 import org.market.app.repositories.OrderRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -18,10 +19,12 @@ public class OrderService {
         this.orderRepository = orderRepository;
     }
 
+    @Transactional(readOnly = true)
     public List<OrderDto> getAllOrders() {
         return orderRepository.findAll().stream().map(this::toOrderDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public OrderDto getOrderById(Long id) {
         Orders order = orderRepository.findById(id).orElseThrow(() -> new OrderNotFoundException("Order not found: " + id));
         return toOrderDto(order);

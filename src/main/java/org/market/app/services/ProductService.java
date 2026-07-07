@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -37,19 +38,19 @@ public class ProductService {
     }
 
     public ItemDto getProductById(Long id) {
-        Product product = productRepository.getProductById(id);
-        if (product == null) {
+        Optional<Product> product = productRepository.findById(id);
+        if (product.isEmpty()) {
             throw new ProductNotFoundException();
         }
-        int count = cartItemRepository.findByProductId(product.getId())
+        int count = cartItemRepository.findByProductId(product.get().getId())
                 .map(CartItem::getCount)
                 .orElse(0);
         return ItemDto.builder()
-                .id(product.getId())
-                .title(product.getTitle())
-                .description(product.getDescription())
-                .imgPath(product.getImgPath())
-                .price(product.getPrice())
+                .id(product.get().getId())
+                .title(product.get().getTitle())
+                .description(product.get().getDescription())
+                .imgPath(product.get().getImgPath())
+                .price(product.get().getPrice())
                 .count(count)
                 .build();
     }
