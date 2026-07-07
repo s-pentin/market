@@ -1,5 +1,6 @@
 package org.market.app.models;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -35,5 +36,6 @@ public class Product {
 
     @NotNull
     @Positive
+    @Column(precision = 10, scale = 2, nullable = false)
     private BigDecimal price;
 }
