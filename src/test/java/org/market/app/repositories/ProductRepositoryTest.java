@@ -6,6 +6,7 @@ import org.market.app.infra.TestPostgresContainer;
 import org.market.app.models.Product;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -15,7 +16,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-class ProductRepositoryTest extends TestPostgresContainer {
+@ImportTestcontainers(TestPostgresContainer.class)
+class ProductRepositoryTest {
 
     @Autowired
     private ProductRepository productRepository;

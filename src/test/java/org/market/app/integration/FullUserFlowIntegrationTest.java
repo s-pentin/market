@@ -5,6 +5,7 @@ import org.market.app.infra.TestPostgresContainer;
 import org.market.app.repositories.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -14,7 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class FullUserFlowIntegrationTest extends TestPostgresContainer {
+@ImportTestcontainers(TestPostgresContainer.class)
+class FullUserFlowIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

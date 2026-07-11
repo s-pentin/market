@@ -7,6 +7,7 @@ import org.market.app.models.CartItem;
 import org.market.app.models.Product;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -14,7 +15,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-class CartItemRepositoryTest extends TestPostgresContainer {
+@ImportTestcontainers(TestPostgresContainer.class)
+class CartItemRepositoryTest {
 
     @Autowired
     private CartItemRepository cartItemRepository;
