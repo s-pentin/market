@@ -9,7 +9,6 @@ import java.util.List;
 @Data
 @Builder
 public class OrderDto {
-
     private Long id;
     private BigDecimal totalSum;
     private List<OrderItemsDto> items;

@@ -8,7 +8,6 @@ import java.math.BigDecimal;
 @Data
 @Builder
 public class ItemDto {
-
     long id;
     String title;
     String description;
