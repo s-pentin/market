@@ -10,11 +10,11 @@ import org.market.app.repositories.ProductRepository;
 import org.market.app.exceptions.ProductNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class CartService {
@@ -28,71 +28,86 @@ public class CartService {
     }
 
     @Transactional(readOnly = true)
-    public ProductsInCart getAllProductsInCart() {
-        List<CartItem> cartItems = cartItemRepository.findAll();
-
-        BigDecimal totalCost = BigDecimal.ZERO;
-        List<ItemDto> items = new ArrayList<>();
-        for (CartItem cartItem: cartItems) {
-            ItemDto item = toItem(cartItem);
-            items.add(item);
-            totalCost = totalCost.add(item.getPrice().multiply(BigDecimal.valueOf(item.getCount())));
-        }
-
-        return ProductsInCart.builder()
-                .items(items)
-                .totalCost(totalCost)
-                .build();
+    public Mono<ProductsInCart> getAllProductsInCart() {
+        return cartItemRepository.findAll()
+                .collectList()
+                .flatMap(cartItems -> {
+                    if (cartItems.isEmpty()) {
+                        return Mono.just(ProductsInCart.builder()
+                                .items(List.of())
+                                .totalCost(BigDecimal.ZERO)
+                                .build());
+                    }
+                    List<Long> productIds = cartItems.stream()
+                            .map(CartItem::getProductId).toList();
+                    return productRepository.findAllById(productIds)
+                            .collectMap(Product::getId)
+                            .map(productsMap -> {
+                                BigDecimal total = BigDecimal.ZERO;
+                                List<ItemDto> items = new ArrayList<>();
+                                for (CartItem ci : cartItems) {
+                                    Product product = productsMap.get(ci.getProductId());
+                                    if (product != null) {
+                                        ItemDto item = toItem(ci, product);
+                                        items.add(item);
+                                        total = total.add(product.getPrice().multiply(BigDecimal.valueOf(ci.getCount())));
+                                    }
+                                }
+                                return ProductsInCart.builder()
+                                        .items(items)
+                                        .totalCost(total)
+                                        .build();
+                            });
+                });
     }
 
     @Transactional
-    public void changeCount(Long productId, Action action) {
-        Optional<CartItem> cartOpt = cartItemRepository.findByProductId(productId);
-        switch (action) {
-            case PLUS -> plus(productId, cartOpt);
-            case MINUS -> minus(cartOpt);
-            case DELETE -> delete(cartOpt);
-        }
+    public Mono<Void> changeCount(Long productId, Action action) {
+        return switch (action) {
+            case PLUS -> plus(productId);
+            case MINUS -> minus(productId);
+            case DELETE -> delete(productId);
+        };
     }
 
-    private void plus(Long productId, Optional<CartItem> cartOpt) {
-        if (cartOpt.isPresent()) {
-            CartItem cart = cartOpt.get();
-            cart.setCount(cart.getCount() + 1);
-            cartItemRepository.save(cart);
-        } else {
-            Product product = productRepository
-                    .findById(productId)
-                    .orElseThrow(() -> new ProductNotFoundException("Product not found: " + productId));
-
-            CartItem cart = new CartItem();
-            cart.setProduct(product);
-            cart.setCount(1);
-
-            cartItemRepository.save(cart);
-        }
+    private Mono<Void> plus(Long productId) {
+        return cartItemRepository.findByProductId(productId)
+                .flatMap(existingCartItem -> {
+                    existingCartItem.setCount(existingCartItem.getCount() + 1);
+                    return cartItemRepository.save(existingCartItem);
+                })
+                .switchIfEmpty(
+                        productRepository.findById(productId)
+                                .switchIfEmpty(Mono.error(new ProductNotFoundException("Product not found: " + productId)))
+                                .flatMap(product -> {
+                                    CartItem newCartItem = new CartItem();
+                                    newCartItem.setProductId(productId);
+                                    newCartItem.setCount(1);
+                                    return cartItemRepository.save(newCartItem);
+                                })
+                )
+                .then();
     }
 
-    private void minus(Optional<CartItem> cartOpt) {
-        if (cartOpt.isPresent()) {
-            CartItem cart = cartOpt.get();
-            if (cart.getCount() > 1) {
-                cart.setCount(cart.getCount() - 1);
-                cartItemRepository.save(cart);
-            } else {
-                cartItemRepository.delete(cart);
-            }
-        }
+    private Mono<Void> minus(Long productId) {
+        return cartItemRepository.findByProductId(productId)
+                .flatMap(cartItem -> {
+                    if (cartItem.getCount() > 1) {
+                        cartItem.setCount(cartItem.getCount() - 1);
+                        return cartItemRepository.save(cartItem);
+                    } else {
+                        return cartItemRepository.delete(cartItem);
+                    }
+                })
+                .then();
     }
 
-    private void delete(Optional<CartItem> cartOpt) {
-        cartOpt.ifPresent(cartItemRepository::delete);
+    private Mono<Void> delete(Long productId) {
+        return cartItemRepository.findByProductId(productId)
+                .flatMap(cartItemRepository::delete);
     }
 
-
-    private ItemDto toItem(CartItem cartItem) {
-        Product product = cartItem.getProduct();
-
+    private ItemDto toItem(CartItem cartItem, Product product) {
         return ItemDto.builder()
                 .id(product.getId())
                 .title(product.getTitle())
