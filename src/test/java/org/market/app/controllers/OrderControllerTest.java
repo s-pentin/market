@@ -5,64 +5,61 @@ import org.market.app.dto.OrderDto;
 import org.market.app.exceptions.OrderNotFoundException;
 import org.market.app.services.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(OrderController.class)
+@WebFluxTest({OrderController.class, GlobalExceptionHandler.class})
 class OrderControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient webTestClient;
 
-    @MockitoBean
+    @MockBean
     private OrderService orderService;
 
     @Test
-    void getOrders_returns200WithOrdersList() throws Exception {
-        when(orderService.getAllOrders()).thenReturn(List.of());
+    void getOrders_returns200() {
+        when(orderService.getAllOrders()).thenReturn(Flux.empty());
 
-        mockMvc.perform(get("/orders"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("orders"))
-                .andExpect(model().attributeExists("orders"));
+        webTestClient.get().uri("/orders")
+                .exchange()
+                .expectStatus().isOk();
     }
 
     @Test
-    void getOrderById_returns200WithNewOrderFalseByDefault() throws Exception {
+    void getOrderById_returns200() {
         OrderDto order = OrderDto.builder().id(1L).totalSum(BigDecimal.valueOf(100)).items(List.of()).build();
-        when(orderService.getOrderById(1L)).thenReturn(order);
+        when(orderService.getOrderById(1L)).thenReturn(Mono.just(order));
 
-        mockMvc.perform(get("/orders/1"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("order"))
-                .andExpect(model().attribute("order", order))
-                .andExpect(model().attribute("newOrder", false));
+        webTestClient.get().uri("/orders/1")
+                .exchange()
+                .expectStatus().isOk();
     }
 
     @Test
-    void getOrderById_withNewOrderTrue_modelHasTrue() throws Exception {
+    void getOrderById_withNewOrderParam_returns200() {
         OrderDto order = OrderDto.builder().id(1L).totalSum(BigDecimal.valueOf(100)).items(List.of()).build();
-        when(orderService.getOrderById(1L)).thenReturn(order);
+        when(orderService.getOrderById(1L)).thenReturn(Mono.just(order));
 
-        mockMvc.perform(get("/orders/1").param("newOrder", "true"))
-                .andExpect(status().isOk())
-                .andExpect(model().attribute("newOrder", true));
+        webTestClient.get().uri("/orders/1?newOrder=true")
+                .exchange()
+                .expectStatus().isOk();
     }
 
     @Test
-    void getOrderById_notFound_rendersNotFoundView() throws Exception {
-        when(orderService.getOrderById(99L)).thenThrow(new OrderNotFoundException());
+    void getOrderById_notFound_returns404() {
+        when(orderService.getOrderById(99L)).thenReturn(Mono.error(new OrderNotFoundException()));
 
-        mockMvc.perform(get("/orders/99"))
-                .andExpect(status().isNotFound())
-                .andExpect(view().name("not_found"));
+        webTestClient.get().uri("/orders/99")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 }

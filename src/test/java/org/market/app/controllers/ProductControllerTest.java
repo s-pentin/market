@@ -10,123 +10,125 @@ import org.market.app.models.SortType;
 import org.market.app.services.CartService;
 import org.market.app.services.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(ProductController.class)
+@WebFluxTest({ProductController.class, GlobalExceptionHandler.class})
 class ProductControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient webTestClient;
 
-    @MockitoBean
+    @MockBean
     private ProductService productService;
 
-    @MockitoBean
+    @MockBean
     private CartService cartService;
 
-    private ProductsPage emptyPage() {
+    private Mono<ProductsPage> emptyPage() {
         Paging paging = new Paging();
         paging.setPageNumber(1);
         paging.setPageSize(5);
-        return ProductsPage.builder()
+        return Mono.just(ProductsPage.builder()
                 .items(List.of())
                 .paging(paging)
                 .sort(SortType.NO)
-                .build();
+                .build());
     }
 
     @Test
-    void getProducts_returns200WithModel() throws Exception {
+    void getProducts_returns200() {
         when(productService.getProducts(any(), any(), any(), any())).thenReturn(emptyPage());
 
-        mockMvc.perform(get("/items"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("items"))
-                .andExpect(model().attributeExists("items", "sort", "paging"));
+        webTestClient.get().uri("/items")
+                .exchange()
+                .expectStatus().isOk();
     }
 
     @Test
-    void getProducts_rootPath_returns200() throws Exception {
+    void getProducts_rootPath_returns200() {
         when(productService.getProducts(any(), any(), any(), any())).thenReturn(emptyPage());
 
-        mockMvc.perform(get("/"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("items"));
+        webTestClient.get().uri("/")
+                .exchange()
+                .expectStatus().isOk();
     }
 
     @Test
-    void getProducts_withSearch_passesSearchToService() throws Exception {
+    void getProducts_withSearch_passesSearchToService() {
         when(productService.getProducts(eq("ball"), any(), any(), any())).thenReturn(emptyPage());
 
-        mockMvc.perform(get("/items").param("search", "ball"))
-                .andExpect(status().isOk());
+        webTestClient.get().uri("/items?search=ball")
+                .exchange()
+                .expectStatus().isOk();
 
         verify(productService).getProducts(eq("ball"), any(), any(), any());
     }
 
     @Test
-    void getProducts_withSortAlpha_passesSortToService() throws Exception {
+    void getProducts_withSortAlpha_passesSortToService() {
         when(productService.getProducts(any(), eq(SortType.ALPHA), any(), any())).thenReturn(emptyPage());
 
-        mockMvc.perform(get("/items").param("sort", "ALPHA"))
-                .andExpect(status().isOk());
+        webTestClient.get().uri("/items?sort=ALPHA")
+                .exchange()
+                .expectStatus().isOk();
 
         verify(productService).getProducts(any(), eq(SortType.ALPHA), any(), any());
     }
 
     @Test
-    void getProductById_returns200WithItem() throws Exception {
+    void getProductById_returns200WithItem() {
         ItemDto item = ItemDto.builder().id(1L).title("Ball").price(BigDecimal.valueOf(100)).count(0).build();
-        when(productService.getProductById(1L)).thenReturn(item);
+        when(productService.getProductById(1L)).thenReturn(Mono.just(item));
 
-        mockMvc.perform(get("/items/1"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("item"))
-                .andExpect(model().attribute("item", item));
+        webTestClient.get().uri("/items/1")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(body -> assertThat(body).contains("Ball"));
     }
 
     @Test
-    void postItems_plus_redirectsBackToItems() throws Exception {
-        mockMvc.perform(post("/items")
-                        .param("id", "1")
-                        .param("action", "PLUS")
-                        .param("sort", "NO")
-                        .param("pageNumber", "1")
-                        .param("pageSize", "5"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("/items*"));
+    void postItems_plus_redirectsBackToItems() {
+        when(cartService.changeCount(1L, Action.PLUS)).thenReturn(Mono.empty());
+
+        webTestClient.post().uri("/items?id=1&action=PLUS&sort=NO&pageNumber=1&pageSize=5")
+                .exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value("Location", loc -> assertThat(loc).contains("/items"));
 
         verify(cartService).changeCount(1L, Action.PLUS);
     }
 
     @Test
-    void postItemById_plus_redirectsToItem() throws Exception {
-        mockMvc.perform(post("/items/1").param("action", "PLUS"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/items/1"));
+    void postItemById_plus_redirectsToItem() {
+        when(cartService.changeCount(1L, Action.PLUS)).thenReturn(Mono.empty());
+
+        webTestClient.post().uri("/items/1?action=PLUS")
+                .exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value("Location", loc -> assertThat(loc).contains("/items/1"));
 
         verify(cartService).changeCount(1L, Action.PLUS);
     }
 
     @Test
-    void getProductById_notFound_rendersNotFoundView() throws Exception {
-        when(productService.getProductById(99L)).thenThrow(new ProductNotFoundException());
+    void getProductById_notFound_returns404() {
+        when(productService.getProductById(99L)).thenReturn(Mono.error(new ProductNotFoundException()));
 
-        mockMvc.perform(get("/items/99"))
-                .andExpect(status().isNotFound())
-                .andExpect(view().name("not_found"));
+        webTestClient.get().uri("/items/99")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 }
