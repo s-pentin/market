@@ -14,6 +14,10 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 
+    <div th:if="${param.error == 'empty'}" class="alert alert-warning">
+        Корзина пуста. Добавьте товар перед оформлением заказа.
+    </div>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3">Корзина</h1>
         <div>
