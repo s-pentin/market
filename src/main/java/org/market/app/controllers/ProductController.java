@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import reactor.core.publisher.Mono;
 
 @Controller
 public class ProductController {
@@ -25,55 +25,56 @@ public class ProductController {
     }
 
     @GetMapping({"/", "/items"})
-    public String getProducts(
+    public Mono<String> getProducts(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "NO") SortType sort,
             @RequestParam(defaultValue = "1") Integer pageNumber,
             @RequestParam(defaultValue = "5") Integer pageSize,
             Model model) {
 
-        ProductsPage page = productService.getProducts(search, sort, pageNumber, pageSize);
-
-        model.addAttribute("items", page.getItems());
-        model.addAttribute("search", page.getSearch());
-        model.addAttribute("sort", page.getSort());
-        model.addAttribute("paging", page.getPaging());
-
-        return "items";
+        return productService.getProducts(search, sort, pageNumber, pageSize)
+                .doOnNext(page -> {
+                    model.addAttribute("items", page.getItems());
+                    model.addAttribute("search", page.getSearch());
+                    model.addAttribute("sort", page.getSort());
+                    model.addAttribute("paging", page.getPaging());
+                })
+                .thenReturn("items");
     }
 
     @GetMapping("/items/{id}")
-    public String getProductById(@PathVariable Long id, Model model) {
-        model.addAttribute("item", productService.getProductById(id));
-        return "item";
+    public Mono<String> getProductById(@PathVariable Long id, Model model) {
+        return productService.getProductById(id)
+                .doOnNext(item -> model.addAttribute("item", item))
+                .thenReturn("item");
     }
 
     @PostMapping("/items")
-    public String updateProductCountFromItems(
+    public Mono<String> updateProductCountFromItems(
             @RequestParam Long id,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "NO") SortType sort,
             @RequestParam(defaultValue = "1") Integer pageNumber,
             @RequestParam(defaultValue = "5") Integer pageSize,
-            @RequestParam Action action,
-            RedirectAttributes redirectAttributes) {
+            @RequestParam Action action) {
 
-        cartService.changeCount(id, action);
-
-        if (search != null) {
-            redirectAttributes.addAttribute("search", search);
-        }
-        redirectAttributes.addAttribute("sort", sort);
-        redirectAttributes.addAttribute("pageNumber", pageNumber);
-        redirectAttributes.addAttribute("pageSize", pageSize);
-
-        return "redirect:/items";
+        return cartService.changeCount(id, action)
+                .thenReturn(buildRedirectUrl(search, sort, pageNumber, pageSize));
     }
 
     @PostMapping("/items/{id}")
-    public String updateProductCountFromItem(@PathVariable Long id, @RequestParam Action action) {
+    public Mono<String> updateProductCountFromItem(@PathVariable Long id, @RequestParam Action action) {
+        return cartService.changeCount(id, action)
+                .thenReturn("redirect:/items/" + id);
+    }
 
-        cartService.changeCount(id, action);
-        return "redirect:/items/{id}";
+    private String buildRedirectUrl(String search, SortType sort, int page, int size) {
+        StringBuilder url = new StringBuilder("redirect:/items?sort=").append(sort)
+                .append("&pageNumber=").append(page)
+                .append("&pageSize=").append(size);
+        if (search != null && !search.isBlank()) {
+            url.append("&search=").append(search);
+        }
+        return url.toString();
     }
 }

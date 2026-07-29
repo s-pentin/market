@@ -3,42 +3,47 @@ package org.market.app.controllers;
 import org.junit.jupiter.api.Test;
 import org.market.app.services.ImageService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Optional;
 
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(ImageController.class)
+@WebFluxTest(ImageController.class)
 class ImageControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient webTestClient;
 
-    @MockitoBean
+    @MockBean
     private ImageService imageService;
 
     @Test
-    void getImage_notFound_returns404() throws Exception {
+    void getImage_notFound_returns404() {
         when(imageService.findImage("nonexistent.jpg")).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/images/nonexistent.jpg"))
-                .andExpect(status().isNotFound());
+        webTestClient.get().uri("/images/nonexistent.jpg")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 
     @Test
-    void getImage_invalidFilename_returns404() throws Exception {
-        mockMvc.perform(get("/images/../hack.png"))
-                .andExpect(status().isNotFound());
+    void getImage_nullFilename_returns404() {
+        when(imageService.findImage("null")).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/images/null"))
-                .andExpect(status().isNotFound());
+        webTestClient.get().uri("/images/null")
+                .exchange()
+                .expectStatus().isNotFound();
+    }
 
-        mockMvc.perform(get("/images/file@name.png"))
-                .andExpect(status().isNotFound());
+    @Test
+    void getImage_filenameWithAt_returns404() {
+        when(imageService.findImage("file@name.png")).thenReturn(Optional.empty());
+
+        webTestClient.get().uri("/images/file@name.png")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 }

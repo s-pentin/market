@@ -6,15 +6,15 @@ import org.market.app.infra.TestPostgresContainer;
 import org.market.app.models.CartItem;
 import org.market.app.models.Product;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@DataJpaTest
+@DataR2dbcTest
 @ImportTestcontainers(TestPostgresContainer.class)
 class CartItemRepositoryTest {
 
@@ -26,35 +26,41 @@ class CartItemRepositoryTest {
 
     @BeforeEach
     void setUp() {
-        cartItemRepository.deleteAll();
-        productRepository.deleteAll();
+        cartItemRepository.deleteAll().block();
+        productRepository.deleteAll().block();
     }
 
     @Test
     void findByProductId_found_returnsCartItem() {
-        Product product = productRepository.save(new Product(null, "Ball", null, null, BigDecimal.valueOf(100)));
-        cartItemRepository.save(new CartItem(null, product, 2));
+        Product product = productRepository.save(
+                new Product(null, "Ball", null, null, BigDecimal.valueOf(100))).block();
+        cartItemRepository.save(new CartItem(null, product.getId(), 2)).block();
 
-        Optional<CartItem> result = cartItemRepository.findByProductId(product.getId());
-
-        assertThat(result).isPresent();
-        assertThat(result.get().getCount()).isEqualTo(2);
-        assertThat(result.get().getProduct().getId()).isEqualTo(product.getId());
+        StepVerifier.create(cartItemRepository.findByProductId(product.getId()))
+                .assertNext(ci -> {
+                    assertThat(ci.getCount()).isEqualTo(2);
+                    assertThat(ci.getProductId()).isEqualTo(product.getId());
+                })
+                .verifyComplete();
     }
 
     @Test
     void findByProductId_notFound_returnsEmpty() {
-        Optional<CartItem> result = cartItemRepository.findByProductId(999L);
-
-        assertThat(result).isEmpty();
+        StepVerifier.create(cartItemRepository.findByProductId(999L))
+                .verifyComplete();
     }
 
     @Test
     void save_persistsCartItem() {
-        Product product = productRepository.save(new Product(null, "Book", null, null, BigDecimal.valueOf(50)));
-        CartItem saved = cartItemRepository.save(new CartItem(null, product, 1));
+        Product product = productRepository.save(
+                new Product(null, "Book", null, null, BigDecimal.valueOf(50))).block();
 
-        assertThat(saved.getId()).isNotNull();
-        assertThat(cartItemRepository.findAll()).hasSize(1);
+        StepVerifier.create(cartItemRepository.save(new CartItem(null, product.getId(), 1)))
+                .assertNext(saved -> assertThat(saved.getId()).isNotNull())
+                .verifyComplete();
+
+        StepVerifier.create(cartItemRepository.findAll())
+                .expectNextCount(1)
+                .verifyComplete();
     }
 }

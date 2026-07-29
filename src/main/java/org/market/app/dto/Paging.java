@@ -4,7 +4,6 @@ import lombok.Data;
 
 @Data
 public class Paging {
-
     int pageSize;
     int pageNumber;
     boolean hasPrevious;

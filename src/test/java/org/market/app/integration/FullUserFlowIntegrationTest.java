@@ -4,22 +4,22 @@ import org.junit.jupiter.api.Test;
 import org.market.app.infra.TestPostgresContainer;
 import org.market.app.repositories.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
-import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureWebTestClient
 @ImportTestcontainers(TestPostgresContainer.class)
 class FullUserFlowIntegrationTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient webTestClient;
 
     @Autowired
     private ProductRepository productRepository;
@@ -33,36 +33,40 @@ class FullUserFlowIntegrationTest {
      * 6. Проверяем, что корзина пуста
      */
     @Test
-    void fullUserFlow_buyProduct_shouldCreateOrderAndClearCart() throws Exception {
+    void fullUserFlow_buyProduct_shouldCreateOrderAndClearCart() {
+        Long productId = productRepository.findAll().blockFirst().getId();
 
-        Long productId = productRepository.findAll().get(0).getId();
+        webTestClient.get().uri("/")
+                .exchange()
+                .expectStatus().isOk();
 
-        mockMvc.perform(get("/"))
-                .andExpect(status().isOk());
+        webTestClient.post().uri("/items?id=" + productId + "&action=PLUS")
+                .exchange()
+                .expectStatus().is3xxRedirection();
 
-        mockMvc.perform(post("/items")
-                        .param("id", productId.toString())
-                        .param("action", "PLUS"))
-                .andExpect(status().is3xxRedirection());
+        webTestClient.get().uri("/cart/items")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(body -> assertThat(body).contains("Итого:"));
 
-        mockMvc.perform(get("/cart/items"))
-                .andExpect(status().isOk())
-                .andExpect(model().attribute("items", hasSize(greaterThan(0))));
+        AtomicReference<String> orderPath = new AtomicReference<>();
+        webTestClient.post().uri("/buy")
+                .exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value("Location", loc -> {
+                    assertThat(loc).contains("/orders/");
+                    orderPath.set(loc);
+                });
 
-        String orderUrl = mockMvc.perform(post("/buy"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("/orders/*?newOrder=true"))
-                .andReturn()
-                .getResponse()
-                .getRedirectedUrl();
+        webTestClient.get().uri(orderPath.get())
+                .exchange()
+                .expectStatus().isOk();
 
-        assert orderUrl != null;
-        mockMvc.perform(get(orderUrl))
-                .andExpect(status().isOk())
-                .andExpect(view().name("order"));
-
-        mockMvc.perform(get("/cart/items"))
-                .andExpect(status().isOk())
-                .andExpect(model().attribute("items", hasSize(0)));
+        webTestClient.get().uri("/cart/items")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(body -> assertThat(body).contains("Корзина пуста"));
     }
 }

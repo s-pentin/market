@@ -9,16 +9,16 @@ import org.market.app.models.Product;
 import org.market.app.models.SortType;
 import org.market.app.repositories.CartItemRepository;
 import org.market.app.repositories.ProductRepository;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -37,59 +37,71 @@ public class ProductService {
         this.cartItemRepository = cartItemRepository;
     }
 
-    public ItemDto getProductById(Long id) {
-        Optional<Product> product = productRepository.findById(id);
-        if (product.isEmpty()) {
-            throw new ProductNotFoundException();
-        }
-        int count = cartItemRepository.findByProductId(product.get().getId())
-                .map(CartItem::getCount)
-                .orElse(0);
-        return ItemDto.builder()
-                .id(product.get().getId())
-                .title(product.get().getTitle())
-                .description(product.get().getDescription())
-                .imgPath(product.get().getImgPath())
-                .price(product.get().getPrice())
-                .count(count)
-                .build();
+    public Mono<ItemDto> getProductById(Long id) {
+        return productRepository.findById(id)
+                .switchIfEmpty(Mono.error(new ProductNotFoundException()))
+                .flatMap(product ->
+                    cartItemRepository.findByProductId(product.getId())
+                            .map(CartItem::getCount)
+                            .defaultIfEmpty(0)
+                            .map(count -> ItemDto.builder()
+                                    .id(product.getId())
+                                    .title(product.getTitle())
+                                    .description(product.getDescription())
+                                    .imgPath(product.getImgPath())
+                                    .price(product.getPrice())
+                                    .count(count)
+                                    .build())
+                );
     }
 
-    public ProductsPage getProducts(String search, SortType sort, Integer pageNumber, Integer pageSize) {
+    public Mono<ProductsPage> getProducts(String search, SortType sort, Integer pageNumber, Integer pageSize) {
         if (pageNumber == null || pageNumber < 1){
             pageNumber = 1;
         }
         if (pageSize == null || !ALLOWED_PAGE_SIZES.contains(pageSize)) {
             pageSize = DEFAULT_PAGE_SIZE;
         }
-
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, toSort(sort));
 
-        Page<Product> page;
+        Flux<Product> page;
+        Mono<Long> countMono;
         if (search != null && !search.isBlank()) {
             page = productRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
                     search, search, pageable);
+            countMono = productRepository
+                    .countByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(search, search);
         } else {
-            page = productRepository.findAll(pageable);
+            page = productRepository.findAllBy(pageable);
+            countMono = productRepository.count();
         }
 
-        List<Long> productIds = page.getContent().stream()
-                .map(Product::getId)
-                .toList();
+        Integer finalPageNumber = pageNumber;
+        Integer finalPageSize = pageSize;
+        return page.collectList()
+                .zipWith(countMono)
+                .flatMap(tuple -> {
+                    List<Product> products = tuple.getT1();
+                    Long total = tuple.getT2();
+                    List<Long> productIds = products.stream().map(Product::getId).toList();
 
-        Map<Long, Integer> cartCounts = cartItemRepository.findAllByProductIdIn(productIds).stream()
-                .collect(Collectors.toMap(ci -> ci.getProduct().getId(), CartItem::getCount));
+                    return cartItemRepository.findAllByProductIdIn(productIds)
+                            .collectList()
+                            .map(cartItems -> {
+                                Map<Long, Integer> cartCount = cartItems.stream()
+                                        .collect(Collectors.toMap(CartItem::getProductId, CartItem::getCount));
+                                List<ItemDto> itemDtos = products.stream()
+                                        .map(p -> toItemDto(p, cartCount))
+                                        .toList();
 
-        List<ItemDto> itemDtos = page.getContent().stream()
-                .map(p -> toItemDto(p, cartCounts))
-                .toList();
-
-        return ProductsPage.builder()
-                .items(splitIntoRows(itemDtos))
-                .paging(buildPaging(page))
-                .search(search)
-                .sort(sort)
-                .build();
+                                return ProductsPage.builder()
+                                        .items(splitIntoRows(itemDtos))
+                                        .paging(buildPaging(finalPageNumber, finalPageSize, total))
+                                        .search(search)
+                                        .sort(sort)
+                                        .build();
+                            });
+                    });
     }
 
     private Sort toSort(SortType sortType) {
@@ -100,12 +112,12 @@ public class ProductService {
         };
     }
 
-    private Paging buildPaging(Page<?> page) {
+    private Paging buildPaging(int pageNumber, int pageSize, long total) {
         Paging paging = new Paging();
-        paging.setPageNumber(page.getNumber() + 1);
-        paging.setPageSize(page.getSize());
-        paging.setHasPrevious(!page.isFirst());
-        paging.setHasNext(!page.isLast());
+        paging.setPageNumber(pageNumber);
+        paging.setPageSize(pageSize);
+        paging.setHasPrevious(pageNumber > 1);
+        paging.setHasNext((long) pageNumber * pageSize < total);
         return paging;
     }
 
