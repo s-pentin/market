@@ -31,77 +31,118 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final CartItemRepository cartItemRepository;
+    private final ProductCacheService productCacheService;
 
-    public ProductService(ProductRepository productRepository, CartItemRepository cartItemRepository) {
+    public ProductService(ProductRepository productRepository, CartItemRepository cartItemRepository, ProductCacheService productCacheService) {
         this.productRepository = productRepository;
         this.cartItemRepository = cartItemRepository;
+        this.productCacheService = productCacheService;
     }
 
     public Mono<ItemDto> getProductById(Long id) {
-        return productRepository.findById(id)
-                .switchIfEmpty(Mono.error(new ProductNotFoundException()))
-                .flatMap(product ->
-                    cartItemRepository.findByProductId(product.getId())
-                            .map(CartItem::getCount)
-                            .defaultIfEmpty(0)
-                            .map(count -> ItemDto.builder()
-                                    .id(product.getId())
-                                    .title(product.getTitle())
-                                    .description(product.getDescription())
-                                    .imgPath(product.getImgPath())
-                                    .price(product.getPrice())
-                                    .count(count)
-                                    .build())
+        return productCacheService.getProduct(id)
+                .flatMap(this::buildItemDto)
+                .switchIfEmpty(
+                        productRepository.findById(id)
+                                .switchIfEmpty(Mono.error(new ProductNotFoundException()))
+                                .flatMap(product -> productCacheService.cacheProduct(product)
+                                        .then(buildItemDto(product)))
                 );
     }
 
     public Mono<ProductsPage> getProducts(String search, SortType sort, Integer pageNumber, Integer pageSize) {
-        if (pageNumber == null || pageNumber < 1){
-            pageNumber = 1;
-        }
-        if (pageSize == null || !ALLOWED_PAGE_SIZES.contains(pageSize)) {
-            pageSize = DEFAULT_PAGE_SIZE;
-        }
+        int finalPageNumber = normalizePageNumber(pageNumber);
+        int finalPageSize = normalizePageSize(pageSize);
+        String sortStr = sort.name();
+
+        return productCacheService.getProductList(search, sortStr, finalPageNumber, finalPageSize)
+                .switchIfEmpty(
+                        loadProductsFromDB(search, sort, finalPageNumber, finalPageSize)
+                                .flatMap(page -> productCacheService
+                                        .cacheProductList(search, sortStr, finalPageNumber, finalPageSize, page)
+                                        .thenReturn(page))
+                );
+    }
+
+    private Mono<ProductsPage> loadProductsFromDB(String search, SortType sort, int pageNumber, int pageSize) {
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, toSort(sort));
 
-        Flux<Product> page;
+        Flux<Product> productsFlux;
         Mono<Long> countMono;
         if (search != null && !search.isBlank()) {
-            page = productRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
-                    search, search, pageable);
-            countMono = productRepository
-                    .countByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(search, search);
+            productsFlux = productRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(search, search, pageable);
+            countMono = productRepository.countByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(search, search);
         } else {
-            page = productRepository.findAllBy(pageable);
+            productsFlux = productRepository.findAllBy(pageable);
             countMono = productRepository.count();
         }
 
-        Integer finalPageNumber = pageNumber;
-        Integer finalPageSize = pageSize;
-        return page.collectList()
+        return productsFlux.collectList()
                 .zipWith(countMono)
-                .flatMap(tuple -> {
-                    List<Product> products = tuple.getT1();
-                    Long total = tuple.getT2();
-                    List<Long> productIds = products.stream().map(Product::getId).toList();
+                .flatMap(tuple ->
+                        buildProductsPage(
+                                tuple.getT1(),
+                                tuple.getT2(),
+                                search,
+                                sort,
+                                pageNumber,
+                                pageSize));
 
-                    return cartItemRepository.findAllByProductIdIn(productIds)
-                            .collectList()
-                            .map(cartItems -> {
-                                Map<Long, Integer> cartCount = cartItems.stream()
-                                        .collect(Collectors.toMap(CartItem::getProductId, CartItem::getCount));
-                                List<ItemDto> itemDtos = products.stream()
-                                        .map(p -> toItemDto(p, cartCount))
-                                        .toList();
+    }
 
-                                return ProductsPage.builder()
-                                        .items(splitIntoRows(itemDtos))
-                                        .paging(buildPaging(finalPageNumber, finalPageSize, total))
-                                        .search(search)
-                                        .sort(sort)
-                                        .build();
-                            });
-                    });
+    private Mono<ItemDto> buildItemDto(Product product) {
+        return cartItemRepository.findByProductId(product.getId())
+                .map(CartItem::getCount)
+                .defaultIfEmpty(0)
+                .map(count -> ItemDto.builder()
+                        .id(product.getId())
+                        .title(product.getTitle())
+                        .description(product.getDescription())
+                        .imgPath(product.getImgPath())
+                        .price(product.getPrice())
+                        .count(count)
+                        .build());
+    }
+
+    private int normalizePageNumber(Integer pageNumber) {
+        return pageNumber == null || pageNumber < 1 ? 1 : pageNumber;
+    }
+
+    private int normalizePageSize(Integer pageSize) {
+        return pageSize == null || !ALLOWED_PAGE_SIZES.contains(pageSize) ? DEFAULT_PAGE_SIZE : pageSize;
+    }
+
+    private Mono<ProductsPage> buildProductsPage(List<Product> products,
+                                                 Long total,
+                                                 String search,
+                                                 SortType sort,
+                                                 int pageNumber,
+                                                 int pageSize) {
+
+        List<Long> productIds = products.stream()
+                .map(Product::getId)
+                .toList();
+
+        return cartItemRepository.findAllByProductIdIn(productIds)
+                .collectList()
+                .map(cartItems -> {
+
+                    Map<Long, Integer> cartCount = cartItems.stream()
+                            .collect(Collectors.toMap(
+                                    CartItem::getProductId,
+                                    CartItem::getCount));
+
+                    List<ItemDto> itemDtos = products.stream()
+                            .map(product -> toItemDto(product, cartCount))
+                            .toList();
+
+                    return ProductsPage.builder()
+                            .items(splitIntoRows(itemDtos))
+                            .paging(buildPaging(pageNumber, pageSize, total))
+                            .search(search)
+                            .sort(sort)
+                            .build();
+                });
     }
 
     private Sort toSort(SortType sortType) {
