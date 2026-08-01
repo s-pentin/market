@@ -2,7 +2,7 @@ package org.market.app.repositories;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.market.app.infra.TestPostgresContainer;
+import org.market.app.infra.TestContainers;
 import org.market.app.models.CartItem;
 import org.market.app.models.Product;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +15,7 @@ import java.math.BigDecimal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataR2dbcTest
-@ImportTestcontainers(TestPostgresContainer.class)
+@ImportTestcontainers(TestContainers.class)
 class CartItemRepositoryTest {
 
     @Autowired

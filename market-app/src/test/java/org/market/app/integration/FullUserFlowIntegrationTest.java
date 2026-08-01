@@ -1,7 +1,7 @@
 package org.market.app.integration;
 
 import org.junit.jupiter.api.Test;
-import org.market.app.infra.TestPostgresContainer;
+import org.market.app.infra.TestContainers;
 import org.market.app.repositories.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
-@ImportTestcontainers(TestPostgresContainer.class)
+@ImportTestcontainers(TestContainers.class)
 class FullUserFlowIntegrationTest {
 
     @Autowired
