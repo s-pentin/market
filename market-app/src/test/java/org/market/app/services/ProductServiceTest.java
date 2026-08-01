@@ -1,5 +1,6 @@
 package org.market.app.services;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.market.app.dto.ItemDto;
@@ -22,7 +23,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,8 +41,21 @@ class ProductServiceTest {
     @Mock
     private CartItemRepository cartItemRepository;
 
+    @Mock
+    private ProductCacheService productCacheService;
+
     @InjectMocks
     private ProductService productService;
+
+    @BeforeEach
+    void setUp() {
+        // По умолчанию — нет кеша
+        lenient().when(productCacheService.getProduct(anyLong())).thenReturn(Mono.empty());
+        lenient().when(productCacheService.getProductList(any(), anyString(), anyInt(), anyInt())).thenReturn(Mono.empty());
+        lenient().when(productCacheService.cacheProduct(any())).thenReturn(Mono.empty());
+        lenient().when(productCacheService.cacheProductList(any(), anyString(), anyInt(), anyInt(), any())).thenReturn(Mono.empty());
+        lenient().when(cartItemRepository.findAllByProductIdIn(anyList())).thenReturn(Flux.empty());
+    }
 
     @Test
     void getProductById_returnsItemDtoWithCartCount() {
