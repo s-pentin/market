@@ -2,6 +2,7 @@ plugins {
     java
     id("org.springframework.boot")
     id("io.spring.dependency-management")
+    id("org.openapi.generator")
 }
 
 dependencies {
@@ -31,4 +32,34 @@ dependencies {
     testImplementation("org.testcontainers:postgresql")
     testImplementation("io.projectreactor:reactor-test")
     testImplementation("org.testcontainers:r2dbc")
+}
+
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generatePaymentClient") {
+    description = "OpenAPI: генерация клиента для payment-service"
+    generatorName.set("java")
+    library.set("webclient")
+    inputSpec.set("$rootDir/api-spec/payment-service-api.yaml")
+    outputDir.set("${layout.buildDirectory.get().asFile}/generated/payment-client")
+    apiPackage.set("org.market.app.payment.api")
+    modelPackage.set("org.market.app.payment.model")
+    configOptions.set(
+        mapOf(
+            "useJakartaEe" to "true",
+            "reactive" to "true",
+            "openApiNullable" to "false",
+            "useTags" to "true"
+        )
+    )
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir("${layout.buildDirectory.get().asFile}/generated/payment-client/src/main/java")
+        }
+    }
+}
+
+tasks.compileJava {
+    dependsOn(tasks.named("generatePaymentClient"))
 }
