@@ -1,7 +1,10 @@
 package org.market.app.controllers;
 
 import org.market.app.exceptions.EmptyCartException;
+import org.market.app.exceptions.InsufficientFundsException;
+import org.market.app.exceptions.InvalidPaymentRequestException;
 import org.market.app.exceptions.OrderNotFoundException;
+import org.market.app.exceptions.PaymentServiceUnavailableException;
 import org.market.app.exceptions.ProductNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -22,5 +25,20 @@ public class GlobalExceptionHandler {
         return Mono.just(Rendering.view("not_found")
                 .status(HttpStatus.NOT_FOUND)
                 .build());
+    }
+
+    @ExceptionHandler(InsufficientFundsException.class)
+    public Mono<String> handleInsufficientFunds() {
+        return Mono.just("redirect:/cart/items?error=insufficient_funds");
+    }
+
+    @ExceptionHandler(PaymentServiceUnavailableException.class)
+    public Mono<String> handlePaymentUnavailable() {
+        return Mono.just("redirect:/cart/items?error=payment_unavailable");
+    }
+
+    @ExceptionHandler(InvalidPaymentRequestException.class)
+    public Mono<String> handleInvalidPayment() {
+        return Mono.just("redirect:/cart/items?error=invalid_payment");
     }
 }
