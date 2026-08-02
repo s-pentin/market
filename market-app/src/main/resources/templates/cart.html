@@ -8,15 +8,23 @@
 <body>
 <div class="container py-4" style="max-width:800px">
 
-    <div th:if="${error}" class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
-        <strong>Ошибка!</strong>
-        <span th:text="${error}"></span>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-
     <div th:if="${param.error == 'empty'}" class="alert alert-warning">
         Корзина пуста. Добавьте товар перед оформлением заказа.
     </div>
+
+    <div th:if="${param.error == 'insufficient_funds'}" class="alert alert-danger">
+        Недостаточно средств для оформления заказа.
+    </div>
+
+    <div th:if="${param.error == 'payment_unavailable'}" class="alert alert-danger">
+        Сервис платежей недоступен. Попробуйте позже.
+    </div>
+
+    <div th:if="${param.error == 'invalid_payment'}" class="alert alert-danger">
+        Ошибка при обработке платежа.
+    </div>
+
+    <div th:if="${paymentError}" class="alert alert-warning" th:text="${paymentError}"></div>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3">Корзина</h1>
@@ -73,10 +81,21 @@
         </table>
 
         <div class="d-flex justify-content-between align-items-center mt-3">
-            <div class="fs-5 fw-bold" th:text="'Итого: ' + ${total} + ' ₽'"></div>
+            <div>
+                <div class="fs-5 fw-bold" th:text="'Итого: ' + ${total} + ' ₽'"></div>
+                <div class="text-muted" th:if="${balance != null}">
+                    Баланс: <span th:text="${balance} + ' ₽'"></span>
+                </div>
+            </div>
             <form method="post" action="/buy">
-                <button type="submit" class="btn btn-success btn-lg">Оформить заказ</button>
+                <button type="submit" class="btn btn-success btn-lg"
+                        th:disabled="${!canCheckout}">Оформить заказ</button>
             </form>
+        </div>
+
+        <div th:if="${!canCheckout}" class="alert alert-warning mt-3">
+            <span th:if="${paymentError}">Сервис платежей недоступен — оформить заказ невозможно.</span>
+            <span th:unless="${paymentError}">Недостаточно средств для оформления заказа. Пополните баланс.</span>
         </div>
     </div>
 
