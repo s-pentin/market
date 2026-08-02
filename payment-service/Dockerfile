@@ -9,11 +9,11 @@ COPY payment-service/build.gradle.kts payment-service/build.gradle.kts
 COPY api-spec api-spec
 
 RUN chmod +x ./gradlew
-RUN ./gradlew :market-app:dependencies --no-daemon
+RUN ./gradlew :payment-service:dependencies --no-daemon
 
-COPY market-app/src market-app/src
+COPY payment-service/src payment-service/src
 
-RUN ./gradlew :market-app:bootJar --no-daemon
+RUN ./gradlew :payment-service:bootJar --no-daemon
 
 # ====================== Runtime ======================
 FROM eclipse-temurin:21-jre
@@ -23,8 +23,8 @@ WORKDIR /app
 RUN groupadd --system appuser && useradd --system --gid appuser appuser
 USER appuser
 
-COPY --from=builder /app/market-app/build/libs/*.jar app.jar
+COPY --from=builder /app/payment-service/build/libs/*.jar app.jar
 
-EXPOSE 8080
+EXPOSE 8082
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
