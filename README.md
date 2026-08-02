@@ -5,13 +5,16 @@
 ## Стек технологий
 
 - **Java 21**
-- **Spring Boot 4**
-- **Spring Web MVC** — веб-слой, Thymeleaf-шаблоны
-- **Spring Data JPA + Hibernate** — доступ к данным
+- **Spring Boot 3.3.4**
+- **Spring WebFlux** — реактивный веб-слой, Thymeleaf-шаблоны
+- **Spring Data R2DBC** — реактивный доступ к данным
+- **Spring Data Redis Reactive** — кеширование товаров
 - **PostgreSQL** — база данных
-- **Flyway** - миграции баз данных
-- **Gradle** — система сборки
-- **Docker / Docker Compose** — контейнеризация
+- **Redis** — кеш
+- **Flyway** — миграции базы данных
+- **OpenAPI 3.0** — контракт payment-service, кодогенерация
+- **Gradle** (Kotlin DSL) — мультимодульная сборка
+- **Docker / Docker Compose** — контейнеризация (4 сервиса)
 - **JUnit 5, Mockito, Testcontainers** — тестирование
 
 ## Запуск локально
@@ -21,6 +24,7 @@
 - Java 21+
 - PostgreSQL (запущенный локально)
 - Gradle (или использовать `./gradlew`)
+- Redis
 
 ### 1. Настройка базы данных
 
@@ -32,7 +36,8 @@ CREATE DATABASE market_app;
 
 ### 2. Настройка подключения
 
-Отредактируйте `src/main/resources/application.properties`:
+Отредактируйте `market-app/src/main/resources/application.properties`:
+Отредактируйте `payment-service/src/main/resources/application.properties`:
 
 ```properties
 spring.datasource.url=jdbc:postgresql://localhost:5432/market_app
@@ -48,7 +53,7 @@ spring.datasource.password=ваш_пароль
 
 Приложение будет доступно по адресу: [http://localhost:8081](http://localhost:8081)
 
-При первом запуске схема БД создаётся автоматически (Hibernate DDL), тестовые товары загружаются из `data.sql`.
+При первом запуске схема БД создаётся автоматически (Hibernate DDL), тестовые товары загружаются при старте приложения c помощью Flyway .
 
 ## Сборка Executable JAR
 
