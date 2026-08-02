@@ -3,6 +3,7 @@ package org.market.app.controllers;
 import org.junit.jupiter.api.Test;
 import org.market.app.dto.ProductsInCart;
 import org.market.app.exceptions.EmptyCartException;
+import org.market.app.exceptions.PaymentServiceUnavailableException;
 import org.market.app.payment.model.PaymentResponse;
 import org.market.app.services.CartService;
 import org.market.app.services.PurchaseService;
@@ -68,5 +69,28 @@ class CheckoutControllerTest {
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> assertThat(loc).contains("/cart/items"));
+    }
+
+    @Test
+    void buy_insufficientFunds_redirectsToCartWithError() {
+        when(cartService.getAllProductsInCart()).thenReturn(Mono.just(cartWithTotal(BigDecimal.valueOf(100))));
+        when(purchaseService.getBalance()).thenReturn(Mono.just(BigDecimal.valueOf(50)));
+
+        webTestClient.post().uri("/buy")
+                .exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value("Location", loc -> assertThat(loc).contains("/cart/items?error=insufficient_funds"));
+    }
+
+    @Test
+    void buy_paymentServiceUnavailable_redirectsToCartWithError() {
+        when(cartService.getAllProductsInCart()).thenReturn(Mono.just(cartWithTotal(BigDecimal.valueOf(100))));
+        when(purchaseService.getBalance())
+                .thenReturn(Mono.error(new PaymentServiceUnavailableException("Сервис платежей недоступен")));
+
+        webTestClient.post().uri("/buy")
+                .exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value("Location", loc -> assertThat(loc).contains("/cart/items?error=payment_unavailable"));
     }
 }
