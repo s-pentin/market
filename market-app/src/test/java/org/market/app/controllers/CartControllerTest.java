@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.market.app.dto.ProductsInCart;
 import org.market.app.models.Action;
 import org.market.app.services.CartService;
+import org.market.app.services.PurchaseService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -27,6 +28,9 @@ class CartControllerTest {
 
     @MockBean
     private CartService cartService;
+
+    @MockBean
+    private PurchaseService purchaseService;
 
     private Mono<ProductsInCart> emptyCart() {
         return Mono.just(ProductsInCart.builder()
@@ -52,6 +56,7 @@ class CartControllerTest {
                 .totalCost(BigDecimal.valueOf(500))
                 .build();
         when(cartService.getAllProductsInCart()).thenReturn(Mono.just(cart));
+        when(purchaseService.getBalance()).thenReturn(Mono.just(BigDecimal.valueOf(1000)));
 
         webTestClient.get().uri("/cart/items")
                 .exchange()

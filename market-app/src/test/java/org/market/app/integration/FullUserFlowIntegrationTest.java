@@ -1,17 +1,26 @@
 package org.market.app.integration;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.market.app.infra.TestContainers;
+import org.market.app.payment.model.PaymentResponse;
 import org.market.app.repositories.ProductRepository;
+import org.market.app.services.PurchaseService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @AutoConfigureWebTestClient
@@ -23,6 +32,17 @@ class FullUserFlowIntegrationTest {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @MockBean
+    private PurchaseService purchaseService;
+
+    @BeforeEach
+    void setUp() {
+        when(purchaseService.getBalance()).thenReturn(Mono.just(BigDecimal.valueOf(50000)));
+        when(purchaseService.pay(eq(null), any(BigDecimal.class)))
+                .thenReturn(Mono.just(new PaymentResponse().success(true)));
+        when(purchaseService.canCheckout(any(BigDecimal.class))).thenReturn(Mono.just(true));
+    }
 
     /**
      * 1. Открываем каталог
