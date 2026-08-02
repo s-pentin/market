@@ -61,7 +61,27 @@ public class ProductService {
                                 .flatMap(page -> productCacheService
                                         .cacheProductList(search, sortStr, finalPageNumber, finalPageSize, page)
                                         .thenReturn(page))
-                );
+                )
+                .flatMap(this::withFreshCartCounts);
+    }
+
+    /**
+     * Кеш хранит только данные товара, а количество в корзине всегда пересчитывается,
+     * чтобы не показывать устаревшие значения.
+     */
+    private Mono<ProductsPage> withFreshCartCounts(ProductsPage page) {
+        List<ItemDto> items = page.getItems().stream().flatMap(List::stream).toList();
+        List<Long> productIds = items.stream()
+                .map(ItemDto::getId)
+                .filter(id -> id != -1L)
+                .toList();
+
+        return cartItemRepository.findAllByProductIdIn(productIds)
+                .collectMap(CartItem::getProductId, CartItem::getCount)
+                .map(cartCounts -> {
+                    items.forEach(item -> item.setCount(cartCounts.getOrDefault(item.getId(), 0)));
+                    return page;
+                });
     }
 
     private Mono<ProductsPage> loadProductsFromDB(String search, SortType sort, int pageNumber, int pageSize) {

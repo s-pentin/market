@@ -1,6 +1,5 @@
 package org.market.app.controllers;
 
-import org.market.app.dto.ProductsPage;
 import org.market.app.models.Action;
 import org.market.app.models.SortType;
 import org.market.app.services.CartService;
@@ -11,7 +10,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
+import java.util.Objects;
 
 @Controller
 public class ProductController {
@@ -50,22 +53,29 @@ public class ProductController {
     }
 
     @PostMapping("/items")
-    public Mono<String> updateProductCountFromItems(
-            @RequestParam Long id,
-            @RequestParam(required = false) String search,
-            @RequestParam(defaultValue = "NO") SortType sort,
-            @RequestParam(defaultValue = "1") Integer pageNumber,
-            @RequestParam(defaultValue = "5") Integer pageSize,
-            @RequestParam Action action) {
+    public Mono<String> updateProductCountFromItems(ServerWebExchange exchange) {
+        return exchange.getFormData()
+                .flatMap(form -> {
+                    Long id = Long.valueOf(Objects.requireNonNull(form.getFirst("id")));
+                    Action action = Action.valueOf(form.getFirst("action"));
+                    String search = form.getFirst("search");
+                    SortType sort = SortType.valueOf(form.getOrDefault("sort", List.of(SortType.NO.toString())).getFirst());
+                    int pageNumber = Integer.parseInt(form.getOrDefault("pageNumber", List.of("1")).getFirst());
+                    int pageSize = Integer.parseInt(form.getOrDefault("pageSize", List.of("5")).getFirst());
 
-        return cartService.changeCount(id, action)
-                .thenReturn(buildRedirectUrl(search, sort, pageNumber, pageSize));
+                    return cartService.changeCount(id, action)
+                            .thenReturn(buildRedirectUrl(search, sort, pageNumber, pageSize));
+                });
     }
 
     @PostMapping("/items/{id}")
-    public Mono<String> updateProductCountFromItem(@PathVariable Long id, @RequestParam Action action) {
-        return cartService.changeCount(id, action)
-                .thenReturn("redirect:/items/" + id);
+    public Mono<String> updateProductCountFromItem(@PathVariable Long id, ServerWebExchange exchange) {
+        return exchange.getFormData()
+                .flatMap(form -> {
+                    Action action = Action.valueOf(form.getFirst("action"));
+                    return cartService.changeCount(id, action)
+                            .thenReturn("redirect:/items/" + id);
+                });
     }
 
     private String buildRedirectUrl(String search, SortType sort, int page, int size) {

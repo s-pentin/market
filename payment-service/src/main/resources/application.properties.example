@@ -3,9 +3,9 @@ server.port=8082
 
 
 # R2DBC — подключение к PostgreSQL (таблица balance)
-spring.r2dbc.url=r2dbc:postgresql://localhost:5432/market_app
-spring.r2dbc.username=postgres
-spring.r2dbc.password=secret
+spring.datasource.url=jdbc:postgresql://localhost:5432/db_name
+spring.datasource.username=username
+spring.datasource.password=password
 
 # Отключаем Flyway в payment-service (миграциями управляет market-app)
 spring.flyway.enabled=false

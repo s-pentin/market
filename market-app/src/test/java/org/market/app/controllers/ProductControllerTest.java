@@ -13,6 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
@@ -103,7 +106,15 @@ class ProductControllerTest {
     void postItems_plus_redirectsBackToItems() {
         when(cartService.changeCount(1L, Action.PLUS)).thenReturn(Mono.empty());
 
-        webTestClient.post().uri("/items?id=1&action=PLUS&sort=NO&pageNumber=1&pageSize=5")
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("id", "1");
+        form.add("action", Action.PLUS.name());
+        form.add("sort", SortType.NO.name());
+        form.add("pageNumber", "1");
+        form.add("pageSize", "5");
+
+        webTestClient.post().uri("/items")
+                .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> assertThat(loc).contains("/items"));
@@ -115,7 +126,11 @@ class ProductControllerTest {
     void postItemById_plus_redirectsToItem() {
         when(cartService.changeCount(1L, Action.PLUS)).thenReturn(Mono.empty());
 
-        webTestClient.post().uri("/items/1?action=PLUS")
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("action", Action.PLUS.name());
+
+        webTestClient.post().uri("/items/1")
+                .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> assertThat(loc).contains("/items/1"));

@@ -3,6 +3,7 @@ package org.market.app.integration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.market.app.infra.TestContainers;
+import org.market.app.models.Action;
 import org.market.app.payment.model.PaymentResponse;
 import org.market.app.repositories.ProductRepository;
 import org.market.app.services.PurchaseService;
@@ -12,6 +13,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
@@ -60,7 +64,12 @@ class FullUserFlowIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        webTestClient.post().uri("/items?id=" + productId + "&action=PLUS")
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("id", String.valueOf(productId));
+        form.add("action", Action.PLUS.name());
+
+        webTestClient.post().uri("/items")
+                .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection();
 

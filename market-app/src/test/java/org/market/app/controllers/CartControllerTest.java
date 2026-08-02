@@ -9,6 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
 import reactor.core.publisher.Mono;
 
 import org.market.app.dto.ItemDto;
@@ -69,7 +72,12 @@ class CartControllerTest {
     void updateCart_plus_redirectsToCart() {
         when(cartService.changeCount(1L, Action.PLUS)).thenReturn(Mono.empty());
 
-        webTestClient.post().uri("/cart/items?id=1&action=PLUS")
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("id", "1");
+        form.add("action", Action.PLUS.name());
+
+        webTestClient.post().uri("/cart/items")
+                .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> assertThat(loc).contains("/cart/items"));
@@ -81,7 +89,12 @@ class CartControllerTest {
     void updateCart_delete_redirectsToCart() {
         when(cartService.changeCount(2L, Action.DELETE)).thenReturn(Mono.empty());
 
-        webTestClient.post().uri("/cart/items?id=2&action=DELETE")
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("id", "2");
+        form.add("action", Action.DELETE.name());
+
+        webTestClient.post().uri("/cart/items")
+                .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> assertThat(loc).contains("/cart/items"));
