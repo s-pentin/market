@@ -1,11 +1,16 @@
 package org.market.app.controllers;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 import org.market.app.exceptions.EmptyCartException;
 import org.market.app.exceptions.InsufficientFundsException;
 import org.market.app.exceptions.InvalidPaymentRequestException;
 import org.market.app.exceptions.OrderNotFoundException;
+import org.market.app.exceptions.PasswordMismatchException;
 import org.market.app.exceptions.PaymentServiceUnavailableException;
 import org.market.app.exceptions.ProductNotFoundException;
+import org.market.app.exceptions.UsernameAlreadyExistsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -40,5 +45,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidPaymentRequestException.class)
     public Mono<String> handleInvalidPayment() {
         return Mono.just("redirect:/cart/items?error=invalid_payment");
+    }
+
+    @ExceptionHandler({UsernameAlreadyExistsException.class, PasswordMismatchException.class})
+    public Mono<String> handleRegistrationError(RuntimeException e) {
+        return Mono.just("redirect:/register?error="
+                + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
     }
 }
