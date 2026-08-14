@@ -35,6 +35,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
 
+    private static final Long USER_ID = 1L;
+
     @Mock
     private ProductRepository productRepository;
 
@@ -49,23 +51,24 @@ class ProductServiceTest {
 
     @BeforeEach
     void setUp() {
-        // По умолчанию — нет кеша
+        // По умолчанию — нет кеша и пустая корзина
         lenient().when(productCacheService.getProduct(anyLong())).thenReturn(Mono.empty());
         lenient().when(productCacheService.getProductList(any(), anyString(), anyInt(), anyInt())).thenReturn(Mono.empty());
         lenient().when(productCacheService.cacheProduct(any())).thenReturn(Mono.empty());
         lenient().when(productCacheService.cacheProductList(any(), anyString(), anyInt(), anyInt(), any())).thenReturn(Mono.empty());
-        lenient().when(cartItemRepository.findAllByProductIdIn(anyList())).thenReturn(Flux.empty());
+        lenient().when(cartItemRepository.findAllByUserIdAndProductIdIn(anyLong(), anyList())).thenReturn(Flux.empty());
+        lenient().when(cartItemRepository.findByUserIdAndProductId(anyLong(), anyLong())).thenReturn(Mono.empty());
     }
 
     @Test
     void getProductById_returnsItemDtoWithCartCount() {
         Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
-        CartItem cartItem = new CartItem(1L, 1L, 3);
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 3);
 
         when(productRepository.findById(1L)).thenReturn(Mono.just(product));
-        when(cartItemRepository.findByProductId(1L)).thenReturn(Mono.just(cartItem));
+        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
 
-        StepVerifier.create(productService.getProductById(1L))
+        StepVerifier.create(productService.getProductById(1L, USER_ID))
                 .assertNext(result -> {
                     assertThat(result.getId()).isEqualTo(1L);
                     assertThat(result.getTitle()).isEqualTo("Ball");
@@ -79,9 +82,19 @@ class ProductServiceTest {
         Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
 
         when(productRepository.findById(1L)).thenReturn(Mono.just(product));
-        when(cartItemRepository.findByProductId(1L)).thenReturn(Mono.empty());
 
-        StepVerifier.create(productService.getProductById(1L))
+        StepVerifier.create(productService.getProductById(1L, USER_ID))
+                .assertNext(result -> assertThat(result.getCount()).isEqualTo(0))
+                .verifyComplete();
+    }
+
+    @Test
+    void getProductById_anonymous_returnsZeroCount() {
+        Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
+
+        when(productRepository.findById(1L)).thenReturn(Mono.just(product));
+
+        StepVerifier.create(productService.getProductById(1L, null))
                 .assertNext(result -> assertThat(result.getCount()).isEqualTo(0))
                 .verifyComplete();
     }
@@ -94,9 +107,8 @@ class ProductServiceTest {
         );
         when(productRepository.findAllBy(any(Pageable.class))).thenReturn(Flux.fromIterable(products));
         when(productRepository.count()).thenReturn(Mono.just(2L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts(null, SortType.NO, 1, 5))
+        StepVerifier.create(productService.getProducts(null, SortType.NO, 1, 5, USER_ID))
                 .assertNext(result -> {
                     assertThat(result.getSearch()).isNull();
                     assertThat(result.getItems()).isNotEmpty();
@@ -111,9 +123,8 @@ class ProductServiceTest {
                 eq("ball"), eq("ball"), any(Pageable.class))).thenReturn(Flux.fromIterable(filtered));
         when(productRepository.countByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
                 eq("ball"), eq("ball"))).thenReturn(Mono.just(1L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts("ball", SortType.NO, 1, 5))
+        StepVerifier.create(productService.getProducts("ball", SortType.NO, 1, 5, USER_ID))
                 .assertNext(result -> assertThat(result.getSearch()).isEqualTo("ball"))
                 .verifyComplete();
 
@@ -125,9 +136,8 @@ class ProductServiceTest {
     void getProducts_alphaSort_passesTitleSortToRepository() {
         when(productRepository.findAllBy(any(Pageable.class))).thenReturn(Flux.empty());
         when(productRepository.count()).thenReturn(Mono.just(0L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts(null, SortType.ALPHA, 1, 5))
+        StepVerifier.create(productService.getProducts(null, SortType.ALPHA, 1, 5, USER_ID))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -140,9 +150,8 @@ class ProductServiceTest {
     void getProducts_priceSort_passesPriceSortToRepository() {
         when(productRepository.findAllBy(any(Pageable.class))).thenReturn(Flux.empty());
         when(productRepository.count()).thenReturn(Mono.just(0L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts(null, SortType.PRICE, 1, 5))
+        StepVerifier.create(productService.getProducts(null, SortType.PRICE, 1, 5, USER_ID))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -155,9 +164,8 @@ class ProductServiceTest {
     void getProducts_pagination_secondPage_passesCorrectPageable() {
         when(productRepository.findAllBy(any(Pageable.class))).thenReturn(Flux.empty());
         when(productRepository.count()).thenReturn(Mono.just(0L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts(null, SortType.NO, 2, 2))
+        StepVerifier.create(productService.getProducts(null, SortType.NO, 2, 2, USER_ID))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -172,9 +180,8 @@ class ProductServiceTest {
         when(productRepository.findAllBy(any(Pageable.class))).thenReturn(
                 Flux.just(new Product(1L, "X", null, null, BigDecimal.valueOf(10))));
         when(productRepository.count()).thenReturn(Mono.just(15L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts(null, SortType.NO, 2, 5))
+        StepVerifier.create(productService.getProducts(null, SortType.NO, 2, 5, USER_ID))
                 .assertNext(result -> {
                     assertThat(result.getPaging().getPageNumber()).isEqualTo(2);
                     assertThat(result.getPaging().isHasPrevious()).isTrue();
@@ -191,9 +198,8 @@ class ProductServiceTest {
         );
         when(productRepository.findAllBy(any(Pageable.class))).thenReturn(Flux.fromIterable(products));
         when(productRepository.count()).thenReturn(Mono.just(2L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts(null, SortType.NO, 1, 5))
+        StepVerifier.create(productService.getProducts(null, SortType.NO, 1, 5, USER_ID))
                 .assertNext(result -> {
                     List<ItemDto> row = result.getItems().getFirst();
                     assertThat(row).hasSize(3);
@@ -206,9 +212,8 @@ class ProductServiceTest {
     void getProducts_invalidPageSize_normalizedToDefault() {
         when(productRepository.findAllBy(any(Pageable.class))).thenReturn(Flux.empty());
         when(productRepository.count()).thenReturn(Mono.just(0L));
-        when(cartItemRepository.findAllByProductIdIn(any())).thenReturn(Flux.empty());
 
-        StepVerifier.create(productService.getProducts(null, SortType.NO, 1, 7))
+        StepVerifier.create(productService.getProducts(null, SortType.NO, 1, 7, USER_ID))
                 .expectNextCount(1)
                 .verifyComplete();
 

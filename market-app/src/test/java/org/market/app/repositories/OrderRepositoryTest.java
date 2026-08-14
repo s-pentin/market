@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.market.app.infra.TestContainers;
 import org.market.app.models.OrderItems;
 import org.market.app.models.Orders;
+import org.market.app.models.Role;
+import org.market.app.models.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
@@ -24,15 +26,22 @@ class OrderRepositoryTest {
     @Autowired
     private OrderItemRepository orderItemRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    private Long userId;
+
     @BeforeEach
     void setUp() {
         orderItemRepository.deleteAll().block();
         orderRepository.deleteAll().block();
+        userRepository.deleteAll().block();
+        userId = userRepository.save(new User(null, "testuser", "hash", Role.CUSTOMER, true)).block().getId();
     }
 
     @Test
     void save_persistsOrder() {
-        Orders order = Orders.builder().totalSum(BigDecimal.valueOf(100)).build();
+        Orders order = Orders.builder().userId(userId).totalSum(BigDecimal.valueOf(100)).build();
 
         StepVerifier.create(orderRepository.save(order))
                 .assertNext(saved -> {
@@ -45,7 +54,7 @@ class OrderRepositoryTest {
     @Test
     void save_andSaveItems_persists() {
         StepVerifier.create(
-                orderRepository.save(Orders.builder().totalSum(BigDecimal.valueOf(300)).build())
+                orderRepository.save(Orders.builder().userId(userId).totalSum(BigDecimal.valueOf(300)).build())
                         .flatMap(savedOrder -> {
                             OrderItems item = OrderItems.builder()
                                     .orderId(savedOrder.getId())
@@ -67,11 +76,11 @@ class OrderRepositoryTest {
     }
 
     @Test
-    void findAll_returnsAllOrders() {
-        orderRepository.save(Orders.builder().totalSum(BigDecimal.valueOf(100)).build()).block();
-        orderRepository.save(Orders.builder().totalSum(BigDecimal.valueOf(200)).build()).block();
+    void findAllByUserId_returnsOrdersForGivenUser() {
+        orderRepository.save(Orders.builder().userId(userId).totalSum(BigDecimal.valueOf(100)).build()).block();
+        orderRepository.save(Orders.builder().userId(userId).totalSum(BigDecimal.valueOf(200)).build()).block();
 
-        StepVerifier.create(orderRepository.findAll())
+        StepVerifier.create(orderRepository.findAllByUserId(userId))
                 .expectNextCount(2)
                 .verifyComplete();
     }

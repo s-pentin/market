@@ -4,14 +4,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.market.app.infra.TestContainers;
 import org.market.app.models.Action;
+import org.market.app.models.Role;
+import org.market.app.models.User;
 import org.market.app.payment.model.PaymentResponse;
 import org.market.app.repositories.ProductRepository;
+import org.market.app.repositories.UserRepository;
+import org.market.app.security.AppUserDetails;
 import org.market.app.services.PurchaseService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -23,7 +29,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
@@ -31,31 +36,34 @@ import static org.mockito.Mockito.when;
 @ImportTestcontainers(TestContainers.class)
 class FullUserFlowIntegrationTest {
 
+    private static long counter = 0;
+
     @Autowired
     private WebTestClient webTestClient;
 
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
     @MockBean
     private PurchaseService purchaseService;
 
+    private UsernamePasswordAuthenticationToken auth;
+
     @BeforeEach
     void setUp() {
-        when(purchaseService.getBalance()).thenReturn(Mono.just(BigDecimal.valueOf(50000)));
-        when(purchaseService.pay(eq(null), any(BigDecimal.class)))
+        User user = userRepository.save(new User(null, "ituser" + (counter++), "hash", Role.CUSTOMER, true)).block();
+        AppUserDetails principal = new AppUserDetails(user);
+        auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+
+        when(purchaseService.getBalance(any())).thenReturn(Mono.just(BigDecimal.valueOf(50000)));
+        when(purchaseService.pay(any(), any(), any()))
                 .thenReturn(Mono.just(new PaymentResponse().success(true)));
-        when(purchaseService.canCheckout(any(BigDecimal.class))).thenReturn(Mono.just(true));
+        when(purchaseService.canCheckout(any(), any())).thenReturn(Mono.just(true));
     }
 
-    /**
-     * 1. Открываем каталог
-     * 2. Добавляем товар в корзину
-     * 3. Открываем корзину
-     * 4. Оформляем заказ
-     * 5. Проверяем страницу заказа
-     * 6. Проверяем, что корзина пуста
-     */
     @Test
     void fullUserFlow_buyProduct_shouldCreateOrderAndClearCart() {
         Long productId = productRepository.findAll().blockFirst().getId();
@@ -68,19 +76,24 @@ class FullUserFlowIntegrationTest {
         form.add("id", String.valueOf(productId));
         form.add("action", Action.PLUS.name());
 
-        webTestClient.post().uri("/items")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.csrf())
+                .mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth))
+                .post().uri("/items")
                 .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection();
 
-        webTestClient.get().uri("/cart/items")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth))
+                .get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
                 .value(body -> assertThat(body).contains("Итого:"));
 
         AtomicReference<String> orderPath = new AtomicReference<>();
-        webTestClient.post().uri("/buy")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.csrf())
+                .mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth))
+                .post().uri("/buy")
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> {
@@ -88,11 +101,13 @@ class FullUserFlowIntegrationTest {
                     orderPath.set(loc);
                 });
 
-        webTestClient.get().uri(orderPath.get())
+        webTestClient.mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth))
+                .get().uri(orderPath.get())
                 .exchange()
                 .expectStatus().isOk();
 
-        webTestClient.get().uri("/cart/items")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth))
+                .get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
