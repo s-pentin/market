@@ -26,15 +26,16 @@ public class PurchaseService {
         this.paymentApi = paymentApi;
     }
 
-    public Mono<BigDecimal> getBalance() {
-        return balanceApi.getBalance()
+    public Mono<BigDecimal> getBalance(Long userId) {
+        return balanceApi.getBalance(userId)
                 .map(BalanceResponse::getBalance)
                 .onErrorMap(WebClientRequestException.class,
                         e -> new PaymentServiceUnavailableException("Сервис платежей недоступен", e));
     }
 
-    public Mono<PaymentResponse> pay(Long orderId, BigDecimal amount) {
+    public Mono<PaymentResponse> pay(Long userId, Long orderId, BigDecimal amount) {
         PaymentRequest request = new PaymentRequest()
+                .userId(userId)
                 .orderId(orderId)
                 .amount(amount);
 
@@ -52,8 +53,8 @@ public class PurchaseService {
                         e -> new PaymentServiceUnavailableException("Сервис платежей недоступен", e));
     }
 
-    public Mono<Boolean> canCheckout(BigDecimal cartTotal) {
-        return getBalance()
+    public Mono<Boolean> canCheckout(Long userId, BigDecimal cartTotal) {
+        return getBalance(userId)
                 .map(balance -> balance.compareTo(cartTotal) >= 0)
                 .onErrorReturn(false);
     }

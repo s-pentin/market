@@ -6,14 +6,47 @@ import org.market.app.payment.api.PaymentApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.client.AuthorizedClientServiceReactiveOAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientProviderBuilder;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.endpoint.WebClientReactiveClientCredentialsTokenResponseClient;
+import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.reactive.function.client.ServerOAuth2AuthorizedClientExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 
 @Configuration
 public class PaymentClientConfig {
 
     @Bean
-    public ApiClient paymentApiClient(@Value("${app.payment.service.url:http://localhost:8082}") String paymentServiceUrl) {
-        WebClient webClient = WebClient.builder().baseUrl(paymentServiceUrl).build();
+    public ReactiveOAuth2AuthorizedClientManager authorizedClientManager(
+            ReactiveClientRegistrationRepository clientRegistrationRepository,
+            ReactiveOAuth2AuthorizedClientService authorizedClientService) {
+
+        var provider = ReactiveOAuth2AuthorizedClientProviderBuilder.builder()
+                .clientCredentials(clientCredentials -> clientCredentials
+                        .accessTokenResponseClient(new WebClientReactiveClientCredentialsTokenResponseClient()))
+                .build();
+
+        var manager = new AuthorizedClientServiceReactiveOAuth2AuthorizedClientManager(
+                clientRegistrationRepository, authorizedClientService);
+        manager.setAuthorizedClientProvider(provider);
+        return manager;
+    }
+
+    @Bean
+    public ApiClient paymentApiClient(
+            @Value("${app.payment.service.url:http://localhost:8082}") String paymentServiceUrl,
+            ReactiveOAuth2AuthorizedClientManager authorizedClientManager) {
+
+        var oauth2Filter = new ServerOAuth2AuthorizedClientExchangeFilterFunction(authorizedClientManager);
+        oauth2Filter.setDefaultClientRegistrationId("payment-service");
+
+        WebClient webClient = WebClient.builder()
+                .baseUrl(paymentServiceUrl)
+                .filter(oauth2Filter)
+                .build();
+
         ApiClient apiClient = new ApiClient(webClient);
         apiClient.setBasePath(paymentServiceUrl);
         return apiClient;
