@@ -3,9 +3,11 @@ package org.market.app.controllers;
 import org.market.app.exceptions.InsufficientFundsException;
 import org.market.app.exceptions.InvalidPaymentRequestException;
 import org.market.app.exceptions.PaymentServiceUnavailableException;
+import org.market.app.security.AppUserDetails;
 import org.market.app.services.CartService;
 import org.market.app.services.PurchaseService;
 import org.market.app.usecases.PlaceOrderUseCase;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PostMapping;
 import reactor.core.publisher.Mono;
@@ -26,16 +28,16 @@ public class CheckoutController {
     }
 
     @PostMapping("/buy")
-    public Mono<String> buy() {
-        return cartService.getAllProductsInCart()
-                .flatMap(cart -> purchaseService.getBalance()
+    public Mono<String> buy(@AuthenticationPrincipal AppUserDetails principal) {
+        return cartService.getAllProductsInCart(principal.getId())
+                .flatMap(cart -> purchaseService.getBalance(principal.getId())
                         .flatMap(balance -> {
                             if (balance.compareTo(cart.getTotalCost()) < 0) {
                                 return Mono.<String>error(new InsufficientFundsException(
                                         "Недостаточно средств. Баланс: " + balance + ", требуется: " + cart.getTotalCost()));
                             }
-                            return purchaseService.pay(null, cart.getTotalCost())
-                                    .then(placeOrderUseCase.execute());
+                            return purchaseService.pay(principal.getId(), null, cart.getTotalCost())
+                                    .then(placeOrderUseCase.execute(principal.getId()));
                         })
                 )
                 .map(orderId -> "redirect:/orders/" + orderId + "?newOrder=true")

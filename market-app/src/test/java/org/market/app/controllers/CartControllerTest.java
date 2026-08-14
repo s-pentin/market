@@ -1,29 +1,39 @@
 package org.market.app.controllers;
 
 import org.junit.jupiter.api.Test;
+import org.market.app.dto.ItemDto;
 import org.market.app.dto.ProductsInCart;
 import org.market.app.models.Action;
+import org.market.app.models.Role;
+import org.market.app.models.User;
+import org.market.app.security.AppUserDetails;
+import org.market.app.security.SecurityConfig;
 import org.market.app.services.CartService;
 import org.market.app.services.PurchaseService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
+import org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import reactor.core.publisher.Mono;
 
-import org.market.app.dto.ItemDto;
-
 import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @WebFluxTest(CartController.class)
+@Import(SecurityConfig.class)
 class CartControllerTest {
 
     @Autowired
@@ -35,6 +45,14 @@ class CartControllerTest {
     @MockBean
     private PurchaseService purchaseService;
 
+    @MockBean
+    private ReactiveUserDetailsService reactiveUserDetailsService;
+
+    private UsernamePasswordAuthenticationToken auth() {
+        AppUserDetails principal = new AppUserDetails(new User(1L, "customer1", "hash", Role.CUSTOMER, true));
+        return new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+    }
+
     private Mono<ProductsInCart> emptyCart() {
         return Mono.just(ProductsInCart.builder()
                 .items(List.of())
@@ -44,9 +62,10 @@ class CartControllerTest {
 
     @Test
     void getCart_returns200() {
-        when(cartService.getAllProductsInCart()).thenReturn(emptyCart());
+        when(cartService.getAllProductsInCart(1L)).thenReturn(emptyCart());
 
-        webTestClient.get().uri("/cart/items")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth()))
+                .get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk();
     }
@@ -58,10 +77,11 @@ class CartControllerTest {
                 .items(List.of(item))
                 .totalCost(BigDecimal.valueOf(500))
                 .build();
-        when(cartService.getAllProductsInCart()).thenReturn(Mono.just(cart));
-        when(purchaseService.getBalance()).thenReturn(Mono.just(BigDecimal.valueOf(1000)));
+        when(cartService.getAllProductsInCart(1L)).thenReturn(Mono.just(cart));
+        when(purchaseService.getBalance(1L)).thenReturn(Mono.just(BigDecimal.valueOf(1000)));
 
-        webTestClient.get().uri("/cart/items")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth()))
+                .get().uri("/cart/items")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
@@ -70,35 +90,39 @@ class CartControllerTest {
 
     @Test
     void updateCart_plus_redirectsToCart() {
-        when(cartService.changeCount(1L, Action.PLUS)).thenReturn(Mono.empty());
+        when(cartService.changeCount(1L, 1L, Action.PLUS)).thenReturn(Mono.empty());
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("id", "1");
         form.add("action", Action.PLUS.name());
 
-        webTestClient.post().uri("/cart/items")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.csrf())
+                .mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth()))
+                .post().uri("/cart/items")
                 .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> assertThat(loc).contains("/cart/items"));
 
-        verify(cartService).changeCount(1L, Action.PLUS);
+        verify(cartService).changeCount(eq(1L), eq(1L), eq(Action.PLUS));
     }
 
     @Test
     void updateCart_delete_redirectsToCart() {
-        when(cartService.changeCount(2L, Action.DELETE)).thenReturn(Mono.empty());
+        when(cartService.changeCount(1L, 2L, Action.DELETE)).thenReturn(Mono.empty());
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("id", "2");
         form.add("action", Action.DELETE.name());
 
-        webTestClient.post().uri("/cart/items")
+        webTestClient.mutateWith(SecurityMockServerConfigurers.csrf())
+                .mutateWith(SecurityMockServerConfigurers.mockAuthentication(auth()))
+                .post().uri("/cart/items")
                 .body(BodyInserters.fromFormData(form))
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", loc -> assertThat(loc).contains("/cart/items"));
 
-        verify(cartService).changeCount(2L, Action.DELETE);
+        verify(cartService).changeCount(eq(1L), eq(2L), eq(Action.DELETE));
     }
 }
