@@ -32,3 +32,11 @@ app.cache.product-list-ttl=60s
 
 # Payment Service
 app.payment.service.url=http://localhost:8082
+
+# OAuth2 Client — market-app как клиент Keycloak (Client Credentials Flow к payment-service)
+spring.security.oauth2.client.registration.payment-service.provider=keycloak
+spring.security.oauth2.client.registration.payment-service.client-id=market-app-client
+spring.security.oauth2.client.registration.payment-service.client-secret=<client-secret>
+spring.security.oauth2.client.registration.payment-service.authorization-grant-type=client_credentials
+
+spring.security.oauth2.client.provider.keycloak.token-uri=http://localhost:8083/realms/market/protocol/openid-connect/token
