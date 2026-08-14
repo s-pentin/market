@@ -28,8 +28,8 @@ public class CartService {
     }
 
     @Transactional(readOnly = true)
-    public Mono<ProductsInCart> getAllProductsInCart() {
-        return cartItemRepository.findAll()
+    public Mono<ProductsInCart> getAllProductsInCart(Long userId) {
+        return cartItemRepository.findAllByUserId(userId)
                 .collectList()
                 .flatMap(cartItems -> {
                     if (cartItems.isEmpty()) {
@@ -62,16 +62,16 @@ public class CartService {
     }
 
     @Transactional
-    public Mono<Void> changeCount(Long productId, Action action) {
+    public Mono<Void> changeCount(Long userId, Long productId, Action action) {
         return switch (action) {
-            case PLUS -> plus(productId);
-            case MINUS -> minus(productId);
-            case DELETE -> delete(productId);
+            case PLUS -> plus(userId, productId);
+            case MINUS -> minus(userId, productId);
+            case DELETE -> delete(userId, productId);
         };
     }
 
-    private Mono<Void> plus(Long productId) {
-        return cartItemRepository.findByProductId(productId)
+    private Mono<Void> plus(Long userId, Long productId) {
+        return cartItemRepository.findByUserIdAndProductId(userId, productId)
                 .flatMap(existingCartItem -> {
                     existingCartItem.setCount(existingCartItem.getCount() + 1);
                     return cartItemRepository.save(existingCartItem);
@@ -79,18 +79,13 @@ public class CartService {
                 .switchIfEmpty(
                         productRepository.findById(productId)
                                 .switchIfEmpty(Mono.error(new ProductNotFoundException("Product not found: " + productId)))
-                                .flatMap(product -> {
-                                    CartItem newCartItem = new CartItem();
-                                    newCartItem.setProductId(productId);
-                                    newCartItem.setCount(1);
-                                    return cartItemRepository.save(newCartItem);
-                                })
+                                .flatMap(product -> cartItemRepository.save(new CartItem(null, userId, productId, 1)))
                 )
                 .then();
     }
 
-    private Mono<Void> minus(Long productId) {
-        return cartItemRepository.findByProductId(productId)
+    private Mono<Void> minus(Long userId, Long productId) {
+        return cartItemRepository.findByUserIdAndProductId(userId, productId)
                 .flatMap(cartItem -> {
                     if (cartItem.getCount() > 1) {
                         cartItem.setCount(cartItem.getCount() - 1);
@@ -102,8 +97,8 @@ public class CartService {
                 .then();
     }
 
-    private Mono<Void> delete(Long productId) {
-        return cartItemRepository.findByProductId(productId)
+    private Mono<Void> delete(Long userId, Long productId) {
+        return cartItemRepository.findByUserIdAndProductId(userId, productId)
                 .flatMap(cartItemRepository::delete);
     }
 

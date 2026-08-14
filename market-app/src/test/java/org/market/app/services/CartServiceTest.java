@@ -18,11 +18,14 @@ import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class CartServiceTest {
+
+    private static final Long USER_ID = 1L;
 
     @Mock
     private CartItemRepository cartItemRepository;
@@ -36,12 +39,12 @@ class CartServiceTest {
     @Test
     void getAllProductsInCart_returnsItemsAndTotalCost() {
         Product product = new Product(1L, "Ball", "desc", "/img.jpg", BigDecimal.valueOf(100));
-        CartItem cartItem = new CartItem(1L, 1L, 2);
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 2);
 
-        when(cartItemRepository.findAll()).thenReturn(Flux.just(cartItem));
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(cartItem));
         when(productRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(product));
 
-        StepVerifier.create(cartService.getAllProductsInCart())
+        StepVerifier.create(cartService.getAllProductsInCart(USER_ID))
                 .assertNext(result -> {
                     assertThat(result.getItems()).hasSize(1);
                     assertThat(result.getTotalCost()).isEqualByComparingTo(BigDecimal.valueOf(200));
@@ -51,9 +54,9 @@ class CartServiceTest {
 
     @Test
     void getAllProductsInCart_emptyCart_returnsZeroTotal() {
-        when(cartItemRepository.findAll()).thenReturn(Flux.empty());
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.empty());
 
-        StepVerifier.create(cartService.getAllProductsInCart())
+        StepVerifier.create(cartService.getAllProductsInCart(USER_ID))
                 .assertNext(result -> {
                     assertThat(result.getItems()).isEmpty();
                     assertThat(result.getTotalCost()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -63,12 +66,11 @@ class CartServiceTest {
 
     @Test
     void changeCount_plus_existingItem_incrementsCount() {
-        CartItem cartItem = new CartItem(1L, 1L, 1);
-        when(cartItemRepository.findByProductId(1L)).thenReturn(Mono.just(cartItem));
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 1);
+        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
         when(cartItemRepository.save(any())).thenReturn(Mono.just(cartItem));
-        when(productRepository.findById(1L)).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.changeCount(1L, Action.PLUS))
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.PLUS))
                 .verifyComplete();
 
         assertThat(cartItem.getCount()).isEqualTo(2);
@@ -78,12 +80,12 @@ class CartServiceTest {
     @Test
     void changeCount_plus_newItem_createsCartItemWithCountOne() {
         Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
-        CartItem saved = new CartItem(2L, 1L, 1);
-        when(cartItemRepository.findByProductId(1L)).thenReturn(Mono.empty());
+        CartItem saved = new CartItem(2L, USER_ID, 1L, 1);
+        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.empty());
         when(productRepository.findById(1L)).thenReturn(Mono.just(product));
         when(cartItemRepository.save(any())).thenReturn(Mono.just(saved));
 
-        StepVerifier.create(cartService.changeCount(1L, Action.PLUS))
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.PLUS))
                 .verifyComplete();
 
         verify(cartItemRepository).save(any(CartItem.class));
@@ -91,11 +93,11 @@ class CartServiceTest {
 
     @Test
     void changeCount_minus_countGreaterThanOne_decrementsCount() {
-        CartItem cartItem = new CartItem(1L, 1L, 3);
-        when(cartItemRepository.findByProductId(1L)).thenReturn(Mono.just(cartItem));
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 3);
+        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
         when(cartItemRepository.save(any())).thenReturn(Mono.just(cartItem));
 
-        StepVerifier.create(cartService.changeCount(1L, Action.MINUS))
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.MINUS))
                 .verifyComplete();
 
         assertThat(cartItem.getCount()).isEqualTo(2);
@@ -104,11 +106,11 @@ class CartServiceTest {
 
     @Test
     void changeCount_minus_countEqualsOne_deletesItem() {
-        CartItem cartItem = new CartItem(1L, 1L, 1);
-        when(cartItemRepository.findByProductId(1L)).thenReturn(Mono.just(cartItem));
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 1);
+        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
         when(cartItemRepository.delete(any())).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.changeCount(1L, Action.MINUS))
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.MINUS))
                 .verifyComplete();
 
         verify(cartItemRepository).delete(cartItem);
@@ -116,13 +118,27 @@ class CartServiceTest {
 
     @Test
     void changeCount_delete_deletesItem() {
-        CartItem cartItem = new CartItem(1L, 1L, 5);
-        when(cartItemRepository.findByProductId(1L)).thenReturn(Mono.just(cartItem));
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 5);
+        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
         when(cartItemRepository.delete(any())).thenReturn(Mono.empty());
 
-        StepVerifier.create(cartService.changeCount(1L, Action.DELETE))
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.DELETE))
                 .verifyComplete();
 
         verify(cartItemRepository).delete(cartItem);
+    }
+
+    @Test
+    void getAllProductsInCart_onlyReturnsItemsForGivenUser() {
+        Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 2);
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(cartItem));
+        when(productRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(product));
+
+        StepVerifier.create(cartService.getAllProductsInCart(USER_ID))
+                .assertNext(cart -> assertThat(cart.getItems()).hasSize(1))
+                .verifyComplete();
+
+        verify(cartItemRepository, never()).findAllByUserId(2L);
     }
 }

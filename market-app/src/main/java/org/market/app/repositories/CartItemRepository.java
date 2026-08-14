@@ -8,9 +8,9 @@ import reactor.core.publisher.Mono;
 
 import java.util.Collection;
 
-
 @Repository
 public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Long> {
-    Mono<CartItem> findByProductId(Long productId);
-    Flux<CartItem> findAllByProductIdIn(Collection<Long> productIds);
+    Flux<CartItem> findAllByUserId(Long userId);
+    Mono<CartItem> findByUserIdAndProductId(Long userId, Long productId);
+    Flux<CartItem> findAllByUserIdAndProductIdIn(Long userId, Collection<Long> productIds);
 }

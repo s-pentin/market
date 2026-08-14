@@ -35,8 +35,8 @@ public class PlaceOrderUseCase {
     }
 
     @Transactional
-    public Mono<Long> execute() {
-        return cartItemRepository.findAll()
+    public Mono<Long> execute(Long userId) {
+        return cartItemRepository.findAllByUserId(userId)
                 .collectList()
                 .flatMap(cartItems -> {
                     if (cartItems.isEmpty()) {
@@ -63,7 +63,10 @@ public class PlaceOrderUseCase {
                                         .map(i -> i.getPrice().multiply(BigDecimal.valueOf(i.getCount())))
                                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                                Orders order = Orders.builder().totalSum(totalSum).build();
+                                Orders order = Orders.builder()
+                                        .userId(userId)
+                                        .totalSum(totalSum)
+                                        .build();
 
                                 return orderRepository.save(order)
                                         .flatMap(savedOrder -> {

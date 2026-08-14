@@ -28,6 +28,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PlaceOrderUseCaseTest {
 
+    private static final Long USER_ID = 1L;
+
     @Mock
     private CartItemRepository cartItemRepository;
 
@@ -46,17 +48,17 @@ class PlaceOrderUseCaseTest {
     @Test
     void execute_createsFromCart_clearsCart_returnsId() {
         Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
-        CartItem cartItem = new CartItem(1L, 1L, 3);
-        Orders savedOrder = new Orders(42L, BigDecimal.valueOf(300));
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 3);
+        Orders savedOrder = new Orders(42L, USER_ID, BigDecimal.valueOf(300));
         OrderItems savedItem = OrderItems.builder().id(1L).orderId(42L).title("Ball").price(BigDecimal.valueOf(100)).count(3).build();
 
-        when(cartItemRepository.findAll()).thenReturn(Flux.just(cartItem));
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(cartItem));
         when(productRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(product));
         when(orderRepository.save(any(Orders.class))).thenReturn(Mono.just(savedOrder));
         when(orderItemRepository.saveAll(any(Iterable.class))).thenReturn(Flux.just(savedItem));
         when(cartItemRepository.deleteAll(any(Iterable.class))).thenReturn(Mono.empty());
 
-        StepVerifier.create(placeOrderUseCase.execute())
+        StepVerifier.create(placeOrderUseCase.execute(USER_ID))
                 .assertNext(id -> assertThat(id).isEqualTo(42L))
                 .verifyComplete();
 
@@ -68,12 +70,12 @@ class PlaceOrderUseCaseTest {
     void execute_calculatesTotalSum() {
         Product p1 = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
         Product p2 = new Product(2L, "Book", null, null, BigDecimal.valueOf(50));
-        CartItem c1 = new CartItem(1L, 1L, 2);
-        CartItem c2 = new CartItem(2L, 2L, 3);
-        Orders savedOrder = new Orders(1L, BigDecimal.valueOf(350));
+        CartItem c1 = new CartItem(1L, USER_ID, 1L, 2);
+        CartItem c2 = new CartItem(2L, USER_ID, 2L, 3);
+        Orders savedOrder = new Orders(1L, USER_ID, BigDecimal.valueOf(350));
         OrderItems item = OrderItems.builder().id(1L).orderId(1L).title("Ball").price(BigDecimal.valueOf(100)).count(2).build();
 
-        when(cartItemRepository.findAll()).thenReturn(Flux.just(c1, c2));
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(c1, c2));
         when(productRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(p1, p2));
         when(orderRepository.save(any(Orders.class))).thenAnswer(inv -> {
             Orders arg = inv.getArgument(0);
@@ -83,16 +85,16 @@ class PlaceOrderUseCaseTest {
         when(orderItemRepository.saveAll(any(Iterable.class))).thenReturn(Flux.just(item));
         when(cartItemRepository.deleteAll(any(Iterable.class))).thenReturn(Mono.empty());
 
-        StepVerifier.create(placeOrderUseCase.execute())
+        StepVerifier.create(placeOrderUseCase.execute(USER_ID))
                 .expectNextCount(1)
                 .verifyComplete();
     }
 
     @Test
     void execute_emptyCart_throwsEmptyCartException() {
-        when(cartItemRepository.findAll()).thenReturn(Flux.empty());
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.empty());
 
-        StepVerifier.create(placeOrderUseCase.execute())
+        StepVerifier.create(placeOrderUseCase.execute(USER_ID))
                 .expectError(EmptyCartException.class)
                 .verify();
     }
@@ -100,11 +102,11 @@ class PlaceOrderUseCaseTest {
     @Test
     void execute_snapshotsProductTitlePriceCount() {
         Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
-        CartItem cartItem = new CartItem(1L, 1L, 3);
-        Orders savedOrder = new Orders(1L, BigDecimal.valueOf(300));
+        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 3);
+        Orders savedOrder = new Orders(1L, USER_ID, BigDecimal.valueOf(300));
         OrderItems savedItem = OrderItems.builder().id(1L).orderId(1L).title("Ball").price(BigDecimal.valueOf(100)).count(3).build();
 
-        when(cartItemRepository.findAll()).thenReturn(Flux.just(cartItem));
+        when(cartItemRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(cartItem));
         when(productRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(product));
         when(orderRepository.save(any(Orders.class))).thenReturn(Mono.just(savedOrder));
         when(orderItemRepository.saveAll(any(Iterable.class))).thenAnswer(inv -> {
@@ -117,7 +119,7 @@ class PlaceOrderUseCaseTest {
         });
         when(cartItemRepository.deleteAll(any(Iterable.class))).thenReturn(Mono.empty());
 
-        StepVerifier.create(placeOrderUseCase.execute())
+        StepVerifier.create(placeOrderUseCase.execute(USER_ID))
                 .expectNextCount(1)
                 .verifyComplete();
     }
