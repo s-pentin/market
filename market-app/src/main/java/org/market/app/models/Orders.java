@@ -18,6 +18,7 @@ public class Orders {
 
     @Id
     private Long id;
+    private Long userId;
     private BigDecimal totalSum;
 
 //    @OneToMany(mappedBy = "orders", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)

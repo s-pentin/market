@@ -23,13 +23,13 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public Flux<OrderDto> getAllOrders() {
-        return orderRepository.findAll().flatMap(this::toOrderDto);
+    public Flux<OrderDto> getAllOrders(Long userId) {
+        return orderRepository.findAllByUserId(userId).flatMap(this::toOrderDto);
     }
 
     @Transactional(readOnly = true)
-    public Mono<OrderDto> getOrderById(Long id) {
-        return orderRepository.findById(id)
+    public Mono<OrderDto> getOrderById(Long id, Long userId) {
+        return orderRepository.findByIdAndUserId(id, userId)
                 .switchIfEmpty(Mono.error(new OrderNotFoundException("Order not found: " + id)))
                 .flatMap(this::toOrderDto);
     }
