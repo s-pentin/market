@@ -3,12 +3,19 @@ info:
   title: Payment Service API
   version: 1.0.0
 paths:
-  /api/v1/balance:
+  /api/v1/balance/{userId}:
     get:
       operationId: getBalance
       tags:
         - Balance
-      summary: Получить текущий баланс
+      summary: Получить текущий баланс пользователя
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
       responses:
         '200':
           description: Текущий баланс
@@ -59,8 +66,12 @@ components:
     PaymentRequest:
       type: object
       required:
+        - userId
         - amount
       properties:
+        userId:
+          type: integer
+          format: int64
         orderId:
           type: integer
           format: int64
