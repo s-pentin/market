@@ -77,9 +77,9 @@ public class CartService {
                     return cartItemRepository.save(existingCartItem);
                 })
                 .switchIfEmpty(
-                        productRepository.findById(productId)
+                        Mono.defer(() -> productRepository.findById(productId)
                                 .switchIfEmpty(Mono.error(new ProductNotFoundException("Product not found: " + productId)))
-                                .flatMap(product -> cartItemRepository.save(new CartItem(null, userId, productId, 1)))
+                                .flatMap(product -> cartItemRepository.save(new CartItem(null, userId, productId, 1))))
                 )
                 .then();
     }

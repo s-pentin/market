@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
@@ -39,18 +38,18 @@ public class ProductService {
         this.productCacheService = productCacheService;
     }
 
-    public Mono<ItemDto> getProductById(Long id) {
+    public Mono<ItemDto> getProductById(Long id, Long userId) {
         return productCacheService.getProduct(id)
-                .flatMap(this::buildItemDto)
+                .flatMap(product -> buildItemDto(product, userId))
                 .switchIfEmpty(
                         productRepository.findById(id)
                                 .switchIfEmpty(Mono.error(new ProductNotFoundException()))
                                 .flatMap(product -> productCacheService.cacheProduct(product)
-                                        .then(buildItemDto(product)))
+                                        .then(buildItemDto(product, userId)))
                 );
     }
 
-    public Mono<ProductsPage> getProducts(String search, SortType sort, Integer pageNumber, Integer pageSize) {
+    public Mono<ProductsPage> getProducts(String search, SortType sort, Integer pageNumber, Integer pageSize, Long userId) {
         int finalPageNumber = normalizePageNumber(pageNumber);
         int finalPageSize = normalizePageSize(pageSize);
         String sortStr = sort.name();
@@ -62,22 +61,21 @@ public class ProductService {
                                         .cacheProductList(search, sortStr, finalPageNumber, finalPageSize, page)
                                         .thenReturn(page))
                 )
-                .flatMap(this::withFreshCartCounts);
+                .flatMap(page -> withFreshCartCounts(page, userId));
     }
 
     /**
-     * Кеш хранит только данные товара, а количество в корзине всегда пересчитывается,
-     * чтобы не показывать устаревшие значения.
+     * Кеш хранит только данные товара, а количество в корзине всегда пересчитывается
+     * под конкретного пользователя (или 0 для анонима), чтобы не показывать чужие значения.
      */
-    private Mono<ProductsPage> withFreshCartCounts(ProductsPage page) {
+    private Mono<ProductsPage> withFreshCartCounts(ProductsPage page, Long userId) {
         List<ItemDto> items = page.getItems().stream().flatMap(List::stream).toList();
         List<Long> productIds = items.stream()
                 .map(ItemDto::getId)
                 .filter(id -> id != -1L)
                 .toList();
 
-        return cartItemRepository.findAllByProductIdIn(productIds)
-                .collectMap(CartItem::getProductId, CartItem::getCount)
+        return cartCountsFor(userId, productIds)
                 .map(cartCounts -> {
                     items.forEach(item -> item.setCount(cartCounts.getOrDefault(item.getId(), 0)));
                     return page;
@@ -99,21 +97,11 @@ public class ProductService {
 
         return productsFlux.collectList()
                 .zipWith(countMono)
-                .flatMap(tuple ->
-                        buildProductsPage(
-                                tuple.getT1(),
-                                tuple.getT2(),
-                                search,
-                                sort,
-                                pageNumber,
-                                pageSize));
-
+                .map(tuple -> buildProductsPage(tuple.getT1(), tuple.getT2(), search, sort, pageNumber, pageSize));
     }
 
-    private Mono<ItemDto> buildItemDto(Product product) {
-        return cartItemRepository.findByProductId(product.getId())
-                .map(CartItem::getCount)
-                .defaultIfEmpty(0)
+    private Mono<ItemDto> buildItemDto(Product product, Long userId) {
+        return cartCountFor(userId, product.getId())
                 .map(count -> ItemDto.builder()
                         .id(product.getId())
                         .title(product.getTitle())
@@ -132,37 +120,22 @@ public class ProductService {
         return pageSize == null || !ALLOWED_PAGE_SIZES.contains(pageSize) ? DEFAULT_PAGE_SIZE : pageSize;
     }
 
-    private Mono<ProductsPage> buildProductsPage(List<Product> products,
-                                                 Long total,
-                                                 String search,
-                                                 SortType sort,
-                                                 int pageNumber,
-                                                 int pageSize) {
-
-        List<Long> productIds = products.stream()
-                .map(Product::getId)
+    private ProductsPage buildProductsPage(List<Product> products,
+                                           Long total,
+                                           String search,
+                                           SortType sort,
+                                           int pageNumber,
+                                           int pageSize) {
+        List<ItemDto> itemDtos = products.stream()
+                .map(this::toItemDto)
                 .toList();
 
-        return cartItemRepository.findAllByProductIdIn(productIds)
-                .collectList()
-                .map(cartItems -> {
-
-                    Map<Long, Integer> cartCount = cartItems.stream()
-                            .collect(Collectors.toMap(
-                                    CartItem::getProductId,
-                                    CartItem::getCount));
-
-                    List<ItemDto> itemDtos = products.stream()
-                            .map(product -> toItemDto(product, cartCount))
-                            .toList();
-
-                    return ProductsPage.builder()
-                            .items(splitIntoRows(itemDtos))
-                            .paging(buildPaging(pageNumber, pageSize, total))
-                            .search(search)
-                            .sort(sort)
-                            .build();
-                });
+        return ProductsPage.builder()
+                .items(splitIntoRows(itemDtos))
+                .paging(buildPaging(pageNumber, pageSize, total))
+                .search(search)
+                .sort(sort)
+                .build();
     }
 
     private Sort toSort(SortType sortType) {
@@ -182,17 +155,32 @@ public class ProductService {
         return paging;
     }
 
-    private ItemDto toItemDto(Product product, Map<Long, Integer> cartCounts) {
-        int count = cartCounts.getOrDefault(product.getId(), 0);
-
+    private ItemDto toItemDto(Product product) {
         return ItemDto.builder()
                 .id(product.getId())
                 .title(product.getTitle())
                 .description(product.getDescription())
                 .imgPath(product.getImgPath())
                 .price(product.getPrice())
-                .count(count)
+                .count(0)
                 .build();
+    }
+
+    private Mono<Map<Long, Integer>> cartCountsFor(Long userId, List<Long> productIds) {
+        if (userId == null || productIds.isEmpty()) {
+            return Mono.just(Map.of());
+        }
+        return cartItemRepository.findAllByUserIdAndProductIdIn(userId, productIds)
+                .collectMap(CartItem::getProductId, CartItem::getCount);
+    }
+
+    private Mono<Integer> cartCountFor(Long userId, Long productId) {
+        if (userId == null) {
+            return Mono.just(0);
+        }
+        return cartItemRepository.findByUserIdAndProductId(userId, productId)
+                .map(CartItem::getCount)
+                .defaultIfEmpty(0);
     }
 
     private List<List<ItemDto>> splitIntoRows(List<ItemDto> items) {
