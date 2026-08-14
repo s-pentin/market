@@ -19,8 +19,8 @@ public class PaymentController implements BalanceApi, PaymentApi {
     }
 
     @Override
-    public Mono<ResponseEntity<BalanceResponse>> getBalance(ServerWebExchange exchange) {
-        return paymentService.getBalance()
+    public Mono<ResponseEntity<BalanceResponse>> getBalance(Long userId, ServerWebExchange exchange) {
+        return paymentService.getBalance(userId)
                 .map(balance -> {
                     BalanceResponse response = new BalanceResponse()
                             .balance(balance.getAmount())
@@ -34,8 +34,7 @@ public class PaymentController implements BalanceApi, PaymentApi {
             Mono<PaymentRequest> paymentRequest,
             ServerWebExchange exchange) {
         return paymentRequest
-                .map(PaymentRequest::getAmount)
-                .flatMap(paymentService::processPayment)
+                .flatMap(request -> paymentService.processPayment(request.getUserId(), request.getAmount()))
                 .map(balance -> {
                     PaymentResponse response = new PaymentResponse()
                             .success(true)

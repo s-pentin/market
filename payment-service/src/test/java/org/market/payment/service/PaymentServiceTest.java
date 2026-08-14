@@ -2,7 +2,6 @@ package org.market.payment.service;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.market.payment.exception.BalanceNotFoundException;
 import org.market.payment.exception.InsufficientFundsException;
 import org.market.payment.exception.InvalidPaymentRequestException;
 import org.market.payment.model.Balance;
@@ -16,6 +15,8 @@ import reactor.test.StepVerifier;
 import java.math.BigDecimal;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,101 +28,92 @@ class PaymentServiceTest {
     @InjectMocks
     private PaymentService paymentService;
 
-    private static final long BALANCE_ID = 1L;
+    private static final long USER_ID = 1L;
+    private static final long BALANCE_ID = 10L;
 
     @Test
-    void getBalance_shouldReturnBalance() {
-        Balance balance = new Balance(BALANCE_ID, BigDecimal.valueOf(5000), "RUB");
-        when(balanceRepository.findById(BALANCE_ID)).thenReturn(Mono.just(balance));
+    void getBalance_forNewUser_createsInitialBalance() {
+        when(balanceRepository.findByUserId(USER_ID)).thenReturn(Mono.empty());
+        when(balanceRepository.save(any(Balance.class)))
+                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
 
-        StepVerifier.create(paymentService.getBalance())
+        StepVerifier.create(paymentService.getBalance(USER_ID))
+                .expectNextMatches(b -> USER_ID == b.getUserId()
+                        && b.getAmount().compareTo(BigDecimal.valueOf(5000)) == 0
+                        && "RUB".equals(b.getCurrency()))
+                .verifyComplete();
+    }
+
+    @Test
+    void getBalance_forExistingUser_returnsBalanceWithoutCreating() {
+        Balance balance = new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(5000), "RUB");
+        when(balanceRepository.findByUserId(USER_ID)).thenReturn(Mono.just(balance));
+        // switchIfEmpty оценивает fallback-аргумент лениво на этапе сборки цепочки,
+        // поэтому save(...) обязан вернуть ненулевой Mono, даже если не будет подписан.
+        when(balanceRepository.save(any(Balance.class))).thenReturn(Mono.empty());
+
+        StepVerifier.create(paymentService.getBalance(USER_ID))
                 .expectNextMatches(b -> b.getAmount().compareTo(BigDecimal.valueOf(5000)) == 0
                         && "RUB".equals(b.getCurrency()))
                 .verifyComplete();
     }
 
     @Test
-    void processPayment_shouldDecreaseBalance() {
-        Balance initial = new Balance(BALANCE_ID, BigDecimal.valueOf(5000), "RUB");
-        Balance expected = new Balance(BALANCE_ID, BigDecimal.valueOf(4000), "RUB");
-        when(balanceRepository.findById(BALANCE_ID)).thenReturn(Mono.just(initial));
+    void processPayment_decreasesBalanceForGivenUser() {
+        Balance initial = new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(5000), "RUB");
+        Balance expected = new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(4000), "RUB");
+        when(balanceRepository.findByUserId(USER_ID)).thenReturn(Mono.just(initial));
         when(balanceRepository.save(any(Balance.class))).thenReturn(Mono.just(expected));
 
-        StepVerifier.create(paymentService.processPayment(BigDecimal.valueOf(1000)))
+        StepVerifier.create(paymentService.processPayment(USER_ID, BigDecimal.valueOf(1000)))
                 .expectNextMatches(b -> b.getAmount().compareTo(BigDecimal.valueOf(4000)) == 0)
                 .verifyComplete();
     }
 
     @Test
-    void processPayment_nullAmount_shouldThrowInvalidPaymentRequestException() {
-        StepVerifier.create(paymentService.processPayment(null))
+    void processPayment_onlyTouchesBalanceOfGivenUser() {
+        Balance initial = new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(5000), "RUB");
+        Balance expected = new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(4000), "RUB");
+        when(balanceRepository.findByUserId(USER_ID)).thenReturn(Mono.just(initial));
+        when(balanceRepository.save(any(Balance.class))).thenReturn(Mono.just(expected));
+
+        StepVerifier.create(paymentService.processPayment(USER_ID, BigDecimal.valueOf(1000)))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        verify(balanceRepository).findByUserId(USER_ID);
+        verify(balanceRepository, never()).findByUserId(2L);
+    }
+
+    @Test
+    void processPayment_nullAmount_throwsInvalidPaymentRequest() {
+        StepVerifier.create(paymentService.processPayment(USER_ID, null))
                 .expectError(InvalidPaymentRequestException.class)
                 .verify();
     }
 
     @Test
-    void processPayment_zeroAmount_shouldThrowInvalidPaymentRequestException() {
-        StepVerifier.create(paymentService.processPayment(BigDecimal.ZERO))
+    void processPayment_zeroAmount_throwsInvalidPaymentRequest() {
+        StepVerifier.create(paymentService.processPayment(USER_ID, BigDecimal.ZERO))
                 .expectError(InvalidPaymentRequestException.class)
                 .verify();
     }
 
     @Test
-    void processPayment_negativeAmount_shouldThrowInvalidPaymentRequestException() {
-        StepVerifier.create(paymentService.processPayment(BigDecimal.valueOf(-100)))
+    void processPayment_negativeAmount_throwsInvalidPaymentRequest() {
+        StepVerifier.create(paymentService.processPayment(USER_ID, BigDecimal.valueOf(-100)))
                 .expectError(InvalidPaymentRequestException.class)
                 .verify();
     }
 
     @Test
-    void processPayment_insufficientFunds_shouldThrowException() {
-        Balance balance = new Balance(BALANCE_ID, BigDecimal.valueOf(500), "RUB");
-        when(balanceRepository.findById(BALANCE_ID)).thenReturn(Mono.just(balance));
+    void processPayment_insufficientFunds_throwsInsufficientFunds() {
+        Balance balance = new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(500), "RUB");
+        when(balanceRepository.findByUserId(USER_ID)).thenReturn(Mono.just(balance));
+        when(balanceRepository.save(any(Balance.class))).thenReturn(Mono.empty());
 
-        StepVerifier.create(paymentService.processPayment(BigDecimal.valueOf(1000)))
+        StepVerifier.create(paymentService.processPayment(USER_ID, BigDecimal.valueOf(1000)))
                 .expectError(InsufficientFundsException.class)
                 .verify();
-    }
-
-    @Test
-    void processPayment_balanceNotFound_shouldThrowException() {
-        when(balanceRepository.findById(BALANCE_ID)).thenReturn(Mono.empty());
-
-        StepVerifier.create(paymentService.processPayment(BigDecimal.valueOf(1000)))
-                .expectError(BalanceNotFoundException.class)
-                .verify();
-    }
-
-    @Test
-    void processPayment_exactBalance_shouldDeductToZero() {
-        Balance initial = new Balance(BALANCE_ID, BigDecimal.valueOf(1000), "RUB");
-        Balance expected = new Balance(BALANCE_ID, BigDecimal.ZERO, "RUB");
-        when(balanceRepository.findById(BALANCE_ID)).thenReturn(Mono.just(initial));
-        when(balanceRepository.save(any(Balance.class))).thenReturn(Mono.just(expected));
-
-        StepVerifier.create(paymentService.processPayment(BigDecimal.valueOf(1000)))
-                .expectNextMatches(b -> b.getAmount().compareTo(BigDecimal.ZERO) == 0)
-                .verifyComplete();
-    }
-
-    @Test
-    void processPayment_sequentialPayments_shouldAccumulate() {
-        Balance first = new Balance(BALANCE_ID, BigDecimal.valueOf(5000), "RUB");
-        Balance afterFirst = new Balance(BALANCE_ID, BigDecimal.valueOf(4000), "RUB");
-        Balance afterSecond = new Balance(BALANCE_ID, BigDecimal.valueOf(2500), "RUB");
-
-        when(balanceRepository.findById(BALANCE_ID)).thenReturn(Mono.just(first));
-        when(balanceRepository.save(any(Balance.class))).thenReturn(Mono.just(afterFirst));
-
-        StepVerifier.create(paymentService.processPayment(BigDecimal.valueOf(1000)))
-                .expectNextMatches(b -> b.getAmount().compareTo(BigDecimal.valueOf(4000)) == 0)
-                .verifyComplete();
-
-        when(balanceRepository.findById(BALANCE_ID)).thenReturn(Mono.just(afterFirst));
-        when(balanceRepository.save(any(Balance.class))).thenReturn(Mono.just(afterSecond));
-
-        StepVerifier.create(paymentService.processPayment(BigDecimal.valueOf(1500)))
-                .expectNextMatches(b -> b.getAmount().compareTo(BigDecimal.valueOf(2500)) == 0)
-                .verifyComplete();
     }
 }

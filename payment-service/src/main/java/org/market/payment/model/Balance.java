@@ -17,6 +17,8 @@ public class Balance {
     @Id
     private Long id;
 
+    private Long userId;
+
     private BigDecimal amount;
 
     private String currency;

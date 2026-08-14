@@ -1,6 +1,5 @@
 package org.market.payment.service;
 
-import org.market.payment.exception.BalanceNotFoundException;
 import org.market.payment.exception.InsufficientFundsException;
 import org.market.payment.exception.InvalidPaymentRequestException;
 import org.market.payment.model.Balance;
@@ -14,7 +13,8 @@ import java.math.BigDecimal;
 @Service
 public class PaymentService {
 
-    private static final long BALANCE_ID = 1L;
+    private static final BigDecimal INITIAL_BALANCE = BigDecimal.valueOf(5000);
+    private static final String DEFAULT_CURRENCY = "RUB";
 
     private final BalanceRepository balanceRepository;
 
@@ -22,26 +22,27 @@ public class PaymentService {
         this.balanceRepository = balanceRepository;
     }
 
-    public Mono<Balance> getBalance() {
-        return balanceRepository.findById(BALANCE_ID);
+    public Mono<Balance> getBalance(Long userId) {
+        return balanceRepository.findByUserId(userId)
+                .switchIfEmpty(balanceRepository.save(
+                        new Balance(null, userId, INITIAL_BALANCE, DEFAULT_CURRENCY)));
     }
 
     @Transactional
-    public Mono<Balance> processPayment(BigDecimal amount) {
+    public Mono<Balance> processPayment(Long userId, BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             return Mono.error(new InvalidPaymentRequestException("Сумма платежа должна быть положительной"));
         }
 
-        return balanceRepository.findById(BALANCE_ID)
-                .switchIfEmpty(Mono.error(new BalanceNotFoundException("Баланс не найден")))
+        return getBalance(userId)
                 .flatMap(balance -> {
                     if (balance.getAmount().compareTo(amount) < 0) {
                         return Mono.error(new InsufficientFundsException(
                                 "Недостаточно средств. Баланс: " + balance.getAmount() + ", требуется: " + amount));
                     }
 
-                    BigDecimal newAmount = balance.getAmount().subtract(amount);
-                    Balance updated = new Balance(balance.getId(), newAmount, balance.getCurrency());
+                    Balance updated = new Balance(balance.getId(), userId,
+                            balance.getAmount().subtract(amount), balance.getCurrency());
                     return balanceRepository.save(updated);
                 });
     }
