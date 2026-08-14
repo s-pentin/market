@@ -1,0 +1,36 @@
+{
+  "realm": "market",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "market-app-client",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["payment-service-audience"]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "payment-service-audience",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "payment-service-audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "payment-service",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

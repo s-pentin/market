@@ -15,10 +15,17 @@ services:
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
       - APP_PAYMENT_SERVICE_URL=http://payment-service:8082
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT-SERVICE_CLIENT-ID=market-app-client
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT-SERVICE_CLIENT-SECRET=${OAUTH2_CLIENT_SECRET}
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT-SERVICE_AUTHORIZATION-GRANT-TYPE=client_credentials
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT-SERVICE_PROVIDER=keycloak
+      - SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_TOKEN-URI=http://keycloak:8080/realms/market/protocol/openid-connect/token
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     restart: on-failure
 
@@ -32,8 +39,11 @@ services:
       - SPRING_R2DBC_URL=r2dbc:postgresql://postgres:5432/market_app
       - SPRING_R2DBC_USERNAME=${POSTGRES_USER}
       - SPRING_R2DBC_PASSWORD=${POSTGRES_PASSWORD}
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER-URI=http://keycloak:8080/realms/market
     depends_on:
       postgres:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/8082'" ]
@@ -64,6 +74,24 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: [ "start-dev", "--import-realm" ]
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+    env_file:
+      - ./keycloak/keycloak.env
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    ports:
+      - "8083:8080"
+    healthcheck:
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080" ]
       interval: 5s
       timeout: 5s
       retries: 10
