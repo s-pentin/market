@@ -12,6 +12,10 @@ dependencies {
     implementation("io.swagger.core.v3:swagger-annotations:2.2.22")
 
     implementation("org.springframework.boot:spring-boot-starter-data-r2dbc")
+
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.postgresql:r2dbc-postgresql")
 
@@ -20,6 +24,8 @@ dependencies {
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.projectreactor:reactor-test")
+    testImplementation("org.springframework.security:spring-security-test")
+
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
