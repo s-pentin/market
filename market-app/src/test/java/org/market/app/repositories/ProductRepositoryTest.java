@@ -23,8 +23,13 @@ class ProductRepositoryTest {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private CartItemRepository cartItemRepository;
+
     @BeforeEach
     void setUp() {
+        // cart_item.product_id ссылается на product — этот класс делит один Testcontainers-контейнер с CartItemRepositoryTest
+        cartItemRepository.deleteAll().block();
         productRepository.deleteAll().block();
     }
 

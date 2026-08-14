@@ -29,10 +29,20 @@ class CartItemRepositoryTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
+    private OrderItemRepository orderItemRepository;
+
     private Long userId;
 
     @BeforeEach
     void setUp() {
+        // Полная очистка всей FK-цепочки, а не только своих таблиц: этот тест-класс
+        // делит один и тот же Testcontainers-контейнер Postgres с OrderRepositoryTest/ProductRepositoryTest
+        orderItemRepository.deleteAll().block();
+        orderRepository.deleteAll().block();
         cartItemRepository.deleteAll().block();
         productRepository.deleteAll().block();
         userRepository.deleteAll().block();

@@ -29,12 +29,17 @@ class OrderRepositoryTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private CartItemRepository cartItemRepository;
+
     private Long userId;
 
     @BeforeEach
     void setUp() {
+        // Полная очистка всей FK-цепочки — этот класс делит один Testcontainers-контейнер с CartItemRepositoryTest
         orderItemRepository.deleteAll().block();
         orderRepository.deleteAll().block();
+        cartItemRepository.deleteAll().block();
         userRepository.deleteAll().block();
         userId = userRepository.save(new User(null, "testuser", "hash", Role.CUSTOMER, true)).block().getId();
     }
