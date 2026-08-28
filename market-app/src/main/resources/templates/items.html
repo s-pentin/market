@@ -65,9 +65,9 @@
     </div>
 
     <!-- Сетка товаров -->
-    <div th:each="row : ${items}" class="row mb-3">
-        <div th:each="item : ${row}" class="col-md-4">
-            <div th:if="${item.id != -1}" class="card h-100 shadow-sm">
+    <div class="row row-cols-1 row-cols-md-3 g-3">
+        <div class="col" th:each="item : ${items}">
+            <div class="card h-100 shadow-sm">
                 <img th:if="${item.imgPath != null}" th:src="${item.imgPath}"
                      class="card-img-top" style="height:180px;object-fit:cover;" alt=""/>
                 <div class="card-body d-flex flex-column">
