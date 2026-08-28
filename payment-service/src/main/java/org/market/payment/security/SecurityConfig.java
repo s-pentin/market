@@ -26,7 +26,7 @@ public class SecurityConfig {
 
         OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuerUri);
         OAuth2TokenValidator<Jwt> withAudience =
-                new DelegatingOAuth2TokenValidator<>(withIssuer, new AudienceValidator());
+                new DelegatingOAuth2TokenValidator<>(withIssuer, new AudienceValidator(), new ScopeValidator());
         decoder.setJwtValidator(withAudience);
         return decoder;
     }
