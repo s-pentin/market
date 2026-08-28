@@ -71,35 +71,21 @@ public class CartService {
     }
 
     private Mono<Void> plus(Long userId, Long productId) {
-        return cartItemRepository.findByUserIdAndProductId(userId, productId)
-                .flatMap(existingCartItem -> {
-                    existingCartItem.setCount(existingCartItem.getCount() + 1);
-                    return cartItemRepository.save(existingCartItem);
-                })
-                .switchIfEmpty(
-                        Mono.defer(() -> productRepository.findById(productId)
-                                .switchIfEmpty(Mono.error(new ProductNotFoundException("Product not found: " + productId)))
-                                .flatMap(product -> cartItemRepository.save(new CartItem(null, userId, productId, 1))))
-                )
-                .then();
+        return productRepository.existsById(productId)
+                .flatMap(exists -> exists
+                        ? cartItemRepository.incrementOrInsert(userId, productId).then()
+                        : Mono.error(new ProductNotFoundException("Product not found: " + productId)));
     }
 
     private Mono<Void> minus(Long userId, Long productId) {
-        return cartItemRepository.findByUserIdAndProductId(userId, productId)
-                .flatMap(cartItem -> {
-                    if (cartItem.getCount() > 1) {
-                        cartItem.setCount(cartItem.getCount() - 1);
-                        return cartItemRepository.save(cartItem);
-                    } else {
-                        return cartItemRepository.delete(cartItem);
-                    }
-                })
-                .then();
+        return cartItemRepository.decrementIfAboveOne(userId, productId)
+                .flatMap(rowsUpdated -> rowsUpdated == 0
+                        ? cartItemRepository.deleteByUserIdAndProductId(userId, productId)
+                        : Mono.empty());
     }
 
     private Mono<Void> delete(Long userId, Long productId) {
-        return cartItemRepository.findByUserIdAndProductId(userId, productId)
-                .flatMap(cartItemRepository::delete);
+        return cartItemRepository.deleteByUserIdAndProductId(userId, productId);
     }
 
     private ItemDto toItem(CartItem cartItem, Product product) {
