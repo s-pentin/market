@@ -2,6 +2,7 @@ package org.market.app.services;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.market.app.exceptions.ProductNotFoundException;
 import org.market.app.models.Action;
 import org.market.app.models.CartItem;
 import org.market.app.models.Product;
@@ -65,70 +66,6 @@ class CartServiceTest {
     }
 
     @Test
-    void changeCount_plus_existingItem_incrementsCount() {
-        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 1);
-        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
-        when(cartItemRepository.save(any())).thenReturn(Mono.just(cartItem));
-
-        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.PLUS))
-                .verifyComplete();
-
-        assertThat(cartItem.getCount()).isEqualTo(2);
-        verify(cartItemRepository).save(cartItem);
-    }
-
-    @Test
-    void changeCount_plus_newItem_createsCartItemWithCountOne() {
-        Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
-        CartItem saved = new CartItem(2L, USER_ID, 1L, 1);
-        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.empty());
-        when(productRepository.findById(1L)).thenReturn(Mono.just(product));
-        when(cartItemRepository.save(any())).thenReturn(Mono.just(saved));
-
-        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.PLUS))
-                .verifyComplete();
-
-        verify(cartItemRepository).save(any(CartItem.class));
-    }
-
-    @Test
-    void changeCount_minus_countGreaterThanOne_decrementsCount() {
-        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 3);
-        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
-        when(cartItemRepository.save(any())).thenReturn(Mono.just(cartItem));
-
-        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.MINUS))
-                .verifyComplete();
-
-        assertThat(cartItem.getCount()).isEqualTo(2);
-        verify(cartItemRepository).save(cartItem);
-    }
-
-    @Test
-    void changeCount_minus_countEqualsOne_deletesItem() {
-        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 1);
-        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
-        when(cartItemRepository.delete(any())).thenReturn(Mono.empty());
-
-        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.MINUS))
-                .verifyComplete();
-
-        verify(cartItemRepository).delete(cartItem);
-    }
-
-    @Test
-    void changeCount_delete_deletesItem() {
-        CartItem cartItem = new CartItem(1L, USER_ID, 1L, 5);
-        when(cartItemRepository.findByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.just(cartItem));
-        when(cartItemRepository.delete(any())).thenReturn(Mono.empty());
-
-        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.DELETE))
-                .verifyComplete();
-
-        verify(cartItemRepository).delete(cartItem);
-    }
-
-    @Test
     void getAllProductsInCart_onlyReturnsItemsForGivenUser() {
         Product product = new Product(1L, "Ball", null, null, BigDecimal.valueOf(100));
         CartItem cartItem = new CartItem(1L, USER_ID, 1L, 2);
@@ -140,5 +77,57 @@ class CartServiceTest {
                 .verifyComplete();
 
         verify(cartItemRepository, never()).findAllByUserId(2L);
+    }
+
+    @Test
+    void changeCount_plus_existingProduct_usesAtomicIncrementOrInsert() {
+        when(productRepository.existsById(1L)).thenReturn(Mono.just(true));
+        when(cartItemRepository.incrementOrInsert(USER_ID, 1L)).thenReturn(Mono.just(1));
+
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.PLUS))
+                .verifyComplete();
+
+        verify(cartItemRepository).incrementOrInsert(USER_ID, 1L);
+    }
+
+    @Test
+    void changeCount_plus_unknownProduct_throwsProductNotFound() {
+        when(productRepository.existsById(1L)).thenReturn(Mono.just(false));
+
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.PLUS))
+                .expectError(ProductNotFoundException.class)
+                .verify();
+    }
+
+    @Test
+    void changeCount_minus_countAboveOne_decrements() {
+        when(cartItemRepository.decrementIfAboveOne(USER_ID, 1L)).thenReturn(Mono.just(1));
+
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.MINUS))
+                .verifyComplete();
+
+        verify(cartItemRepository).decrementIfAboveOne(USER_ID, 1L);
+        verify(cartItemRepository, never()).deleteByUserIdAndProductId(any(), any());
+    }
+
+    @Test
+    void changeCount_minus_countWasOne_deletesItem() {
+        when(cartItemRepository.decrementIfAboveOne(USER_ID, 1L)).thenReturn(Mono.just(0));
+        when(cartItemRepository.deleteByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.empty());
+
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.MINUS))
+                .verifyComplete();
+
+        verify(cartItemRepository).deleteByUserIdAndProductId(USER_ID, 1L);
+    }
+
+    @Test
+    void changeCount_delete_deletesItem() {
+        when(cartItemRepository.deleteByUserIdAndProductId(USER_ID, 1L)).thenReturn(Mono.empty());
+
+        StepVerifier.create(cartService.changeCount(USER_ID, 1L, Action.DELETE))
+                .verifyComplete();
+
+        verify(cartItemRepository).deleteByUserIdAndProductId(USER_ID, 1L);
     }
 }
