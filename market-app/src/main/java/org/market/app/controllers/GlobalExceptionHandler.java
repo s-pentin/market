@@ -14,6 +14,7 @@ import org.market.app.exceptions.UsernameAlreadyExistsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.reactive.result.view.Rendering;
 import reactor.core.publisher.Mono;
 
@@ -51,5 +52,11 @@ public class GlobalExceptionHandler {
     public Mono<String> handleRegistrationError(RuntimeException e) {
         return Mono.just("redirect:/register?error="
                 + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
+    }
+
+    @ExceptionHandler(WebExchangeBindException.class)
+    public Mono<String> handleValidationError(WebExchangeBindException e) {
+        return Mono.just("redirect:/register?error="
+                + URLEncoder.encode("Некорректные данные формы регистрации", StandardCharsets.UTF_8));
     }
 }

@@ -18,7 +18,6 @@ public class OrderItems {
 
     @Id
     private Long id;
-
     private Long orderId;
     private String title;
     private BigDecimal price;
