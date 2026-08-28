@@ -17,6 +17,7 @@ import reactor.test.StepVerifier;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,14 +34,18 @@ class OrderServiceTest {
     @InjectMocks
     private OrderService orderService;
 
+    private Orders order(Long id, BigDecimal total) {
+        return Orders.builder().id(id).userId(USER_ID).totalSum(total).build();
+    }
+
     @Test
     void getAllOrders_returnsOrderDtoList() {
-        Orders order = new Orders(1L, USER_ID, BigDecimal.valueOf(500));
+        Orders order = order(1L, BigDecimal.valueOf(500));
         OrderItems item = OrderItems.builder()
                 .id(1L).orderId(1L).title("Ball").price(BigDecimal.valueOf(100)).count(5).build();
 
-        when(orderRepository.findAllByUserId(USER_ID)).thenReturn(Flux.just(order));
-        when(orderItemRepository.findAllByOrderId(1L)).thenReturn(Flux.just(item));
+        when(orderRepository.findAllByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(Flux.just(order));
+        when(orderItemRepository.findAllByOrderIdIn(anyCollection())).thenReturn(Flux.just(item));
 
         StepVerifier.create(orderService.getAllOrders(USER_ID))
                 .assertNext(dto -> {
@@ -54,7 +59,7 @@ class OrderServiceTest {
 
     @Test
     void getOrderById_returnsOrderDto() {
-        Orders order = new Orders(1L, USER_ID, BigDecimal.valueOf(200));
+        Orders order = order(1L, BigDecimal.valueOf(200));
         OrderItems item = OrderItems.builder()
                 .id(1L).orderId(1L).title("Book").price(BigDecimal.valueOf(100)).count(2).build();
 

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.market.app.infra.TestContainers;
 import org.market.app.models.Action;
+import org.market.app.models.Product;
 import org.market.app.models.Role;
 import org.market.app.models.User;
 import org.market.app.payment.model.PaymentResponse;
@@ -52,22 +53,24 @@ class FullUserFlowIntegrationTest {
 
     private UsernamePasswordAuthenticationToken auth;
 
+    private Long productId;
+
     @BeforeEach
     void setUp() {
         User user = userRepository.save(new User(null, "ituser" + (counter++), "hash", Role.CUSTOMER, true)).block();
         AppUserDetails principal = new AppUserDetails(user);
         auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 
+        productId = productRepository.save(new Product(null, "Test Product", "desc", null, BigDecimal.valueOf(100)))
+                .block().getId();
+
         when(purchaseService.getBalance(any())).thenReturn(Mono.just(BigDecimal.valueOf(50000)));
-        when(purchaseService.pay(any(), any(), any()))
+        when(purchaseService.pay(any(), any(), any(), any()))
                 .thenReturn(Mono.just(new PaymentResponse().success(true)));
-        when(purchaseService.canCheckout(any(), any())).thenReturn(Mono.just(true));
     }
 
     @Test
     void fullUserFlow_buyProduct_shouldCreateOrderAndClearCart() {
-        Long productId = productRepository.findAll().blockFirst().getId();
-
         webTestClient.get().uri("/")
                 .exchange()
                 .expectStatus().isOk();

@@ -1,93 +1,86 @@
 package org.market.app.config;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.market.app.payment.ApiClient;
-import org.market.app.payment.api.BalanceApi;
+import org.market.app.exceptions.PaymentServiceUnavailableException;
+import org.market.app.infra.TestContainers;
 import org.market.app.services.PurchaseService;
-import org.springframework.security.oauth2.client.AuthorizedClientServiceReactiveOAuth2AuthorizedClientManager;
-import org.springframework.security.oauth2.client.InMemoryReactiveOAuth2AuthorizedClientService;
-import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientProviderBuilder;
-import org.springframework.security.oauth2.client.endpoint.WebClientReactiveClientCredentialsTokenResponseClient;
-import org.springframework.security.oauth2.client.registration.ClientRegistration;
-import org.springframework.security.oauth2.client.registration.InMemoryReactiveClientRegistrationRepository;
-import org.springframework.security.oauth2.client.web.reactive.function.client.ServerOAuth2AuthorizedClientExchangeFilterFunction;
-import org.springframework.security.oauth2.core.AuthorizationGrantType;
-import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import reactor.test.StepVerifier;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.matching;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Поднимает реальный {@link PaymentClientConfig} (с OAuth2-фильтром и таймаутом),
+ * а WireMock подменяет только token endpoint и payment-service. Так изменение
+ * production-конфигурации реально ловится этим тестом.
+ */
+@SpringBootTest
+@ImportTestcontainers(TestContainers.class)
 class PaymentClientConfigTest {
 
-    private WireMockServer wireMock;
+    static final WireMockServer wireMock = new WireMockServer(wireMockConfig().dynamicPort());
 
-    @BeforeEach
-    void setUp() {
-        wireMock = new WireMockServer(wireMockConfig().dynamicPort());
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         wireMock.start();
+        registry.add("spring.security.oauth2.client.provider.keycloak.token-uri",
+                () -> "http://localhost:" + wireMock.port() + "/realms/market/protocol/openid-connect/token");
+        registry.add("app.payment.service.url", () -> "http://localhost:" + wireMock.port());
     }
 
-    @AfterEach
-    void tearDown() {
+    @Autowired
+    private PurchaseService purchaseService;
+
+    @BeforeEach
+    void resetWireMock() {
+        wireMock.resetAll();
+    }
+
+    @AfterAll
+    static void tearDown() {
         wireMock.stop();
     }
 
     @Test
-    void purchaseService_attachesBearerTokenFromTokenEndpoint() {
+    void getBalance_attachesBearerTokenFromTokenEndpoint() {
         wireMock.stubFor(post(urlEqualTo("/realms/market/protocol/openid-connect/token"))
                 .willReturn(okJson("{\"access_token\":\"test-token\",\"token_type\":\"Bearer\",\"expires_in\":300}")));
         wireMock.stubFor(get(urlEqualTo("/api/v1/balance/1"))
                 .willReturn(okJson("{\"balance\":5000,\"currency\":\"RUB\"}")));
-
-        String baseUrl = "http://localhost:" + wireMock.port();
-
-        ClientRegistration registration = ClientRegistration.withRegistrationId("payment-service")
-                .tokenUri(baseUrl + "/realms/market/protocol/openid-connect/token")
-                .clientId("market-app-client")
-                .clientSecret("secret")
-                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-                .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
-                .build();
-
-        InMemoryReactiveClientRegistrationRepository registrationRepository =
-                new InMemoryReactiveClientRegistrationRepository(registration);
-        InMemoryReactiveOAuth2AuthorizedClientService clientService =
-                new InMemoryReactiveOAuth2AuthorizedClientService(registrationRepository);
-
-        var provider = ReactiveOAuth2AuthorizedClientProviderBuilder.builder()
-                .clientCredentials(cc -> cc.accessTokenResponseClient(
-                        new WebClientReactiveClientCredentialsTokenResponseClient()))
-                .build();
-
-        var manager = new AuthorizedClientServiceReactiveOAuth2AuthorizedClientManager(
-                registrationRepository, clientService);
-        manager.setAuthorizedClientProvider(provider);
-
-        var oauth2Filter = new ServerOAuth2AuthorizedClientExchangeFilterFunction(manager);
-        oauth2Filter.setDefaultClientRegistrationId("payment-service");
-
-        WebClient webClient = WebClient.builder().baseUrl(baseUrl).filter(oauth2Filter).build();
-        ApiClient apiClient = new ApiClient(webClient);
-        apiClient.setBasePath(baseUrl);
-        BalanceApi balanceApi = new BalanceApi(apiClient);
-        PurchaseService purchaseService = new PurchaseService(balanceApi, null);
 
         StepVerifier.create(purchaseService.getBalance(1L))
                 .assertNext(balance -> assertThat(balance).isEqualByComparingTo("5000"))
                 .verifyComplete();
 
         wireMock.verify(getRequestedFor(urlEqualTo("/api/v1/balance/1"))
-                .withHeader("Authorization", equalTo("Bearer test-token")));
+                .withHeader("Authorization", matching(".+")));
+    }
+
+    @Test
+    void pay_paymentServiceReturns5xx_mapsToPaymentServiceUnavailable() {
+        wireMock.stubFor(post(urlEqualTo("/realms/market/protocol/openid-connect/token"))
+                .willReturn(okJson("{\"access_token\":\"test-token\",\"token_type\":\"Bearer\",\"expires_in\":300}")));
+        wireMock.stubFor(post(urlEqualTo("/api/v1/payment"))
+                .willReturn(aResponse().withStatus(500).withBody("{}")));
+
+        StepVerifier.create(purchaseService.pay(1L, 100L, java.util.UUID.randomUUID(), java.math.BigDecimal.valueOf(100)))
+                .expectError(PaymentServiceUnavailableException.class)
+                .verify();
     }
 }
