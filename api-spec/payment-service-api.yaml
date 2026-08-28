@@ -110,6 +110,9 @@ components:
           type: boolean
         newBalance:
           type: number
+        paymentId:
+          type: integer
+          format: int64
         message:
           type: string
     PaymentRecordResponse:
