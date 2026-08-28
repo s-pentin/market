@@ -83,4 +83,16 @@ class PaymentClientConfigTest {
                 .expectError(PaymentServiceUnavailableException.class)
                 .verify();
     }
+
+    @Test
+    void pay_paymentServiceTimesOut_mapsToPaymentServiceUnavailable() {
+        wireMock.stubFor(post(urlEqualTo("/realms/market/protocol/openid-connect/token"))
+                .willReturn(okJson("{\"access_token\":\"test-token\",\"token_type\":\"Bearer\",\"expires_in\":300}")));
+        wireMock.stubFor(post(urlEqualTo("/api/v1/payment"))
+                .willReturn(okJson("{}").withFixedDelay(5000)));
+
+        StepVerifier.create(purchaseService.pay(1L, 100L, java.util.UUID.randomUUID(), java.math.BigDecimal.valueOf(100)))
+                .expectError(PaymentServiceUnavailableException.class)
+                .verify();
+    }
 }

@@ -32,6 +32,7 @@ dependencies {
     testImplementation("org.testcontainers:r2dbc")
     testImplementation("org.flywaydb:flyway-core")
     testImplementation("org.flywaydb:flyway-database-postgresql")
+    testImplementation("org.wiremock:wiremock-standalone:3.9.1")
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
