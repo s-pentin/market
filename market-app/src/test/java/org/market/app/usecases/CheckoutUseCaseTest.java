@@ -7,6 +7,7 @@ import org.market.app.dto.ItemDto;
 import org.market.app.dto.ProductsInCart;
 import org.market.app.exceptions.EmptyCartException;
 import org.market.app.exceptions.InsufficientFundsException;
+import org.market.app.exceptions.PaymentServiceUnavailableException;
 import org.market.app.models.OrderItems;
 import org.market.app.models.OrderStatus;
 import org.market.app.models.Orders;
@@ -91,7 +92,7 @@ class CheckoutUseCaseTest {
         when(purchaseService.pay(eq(USER_ID), eq(42L), any(UUID.class), eq(BigDecimal.valueOf(200))))
                 .thenReturn(Mono.just(new PaymentResponse().success(true).paymentId(7L)));
         when(orderRepository.markPaid(eq(42L), any(), eq(7L))).thenReturn(Mono.just(1));
-        when(cartItemRepository.deleteAllByUserId(USER_ID)).thenReturn(Mono.empty());
+        when(cartItemRepository.deleteAllByUserIdAndProductIdIn(USER_ID, List.of(1L))).thenReturn(Mono.empty());
 
         StepVerifier.create(checkoutUseCase.execute(USER_ID))
                 .expectNext(42L)
@@ -102,7 +103,7 @@ class CheckoutUseCaseTest {
         assertThat(orderCaptor.getValue().getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
         assertThat(orderCaptor.getValue().getIdempotencyKey()).isNotNull();
         verify(orderRepository).markPaid(eq(42L), any(LocalDateTime.class), eq(7L));
-        verify(cartItemRepository).deleteAllByUserId(USER_ID);
+        verify(cartItemRepository).deleteAllByUserIdAndProductIdIn(USER_ID, List.of(1L));
     }
 
     @Test
@@ -135,7 +136,29 @@ class CheckoutUseCaseTest {
                 .verify();
 
         verify(orderRepository).markPaymentFailed(42L);
-        verify(cartItemRepository, never()).deleteAllByUserId(anyLong());
+        verify(cartItemRepository, never()).deleteAllByUserIdAndProductIdIn(anyLong(), any());
+    }
+
+    @Test
+    void execute_paymentServiceUnavailable_leavesOrderPendingForReconciliation() {
+        ProductsInCart cart = cartWithTotal(BigDecimal.valueOf(200));
+        Orders saved = Orders.builder().id(42L).userId(USER_ID).totalSum(BigDecimal.valueOf(200))
+                .status(OrderStatus.PENDING_PAYMENT).idempotencyKey(UUID.randomUUID()).build();
+
+        when(cartService.getAllProductsInCart(USER_ID)).thenReturn(Mono.just(cart));
+        when(orderRepository.save(any(Orders.class))).thenReturn(Mono.just(saved));
+        when(orderItemRepository.saveAll(any(Iterable.class))).thenReturn(Flux.empty());
+        when(purchaseService.pay(eq(USER_ID), eq(42L), any(UUID.class), eq(BigDecimal.valueOf(200))))
+                .thenReturn(Mono.error(new PaymentServiceUnavailableException("Сервис платежей недоступен")));
+
+        StepVerifier.create(checkoutUseCase.execute(USER_ID))
+                .expectError(PaymentServiceUnavailableException.class)
+                .verify();
+
+        // Технический сбой — не подтверждённый отказ: заказ остаётся PENDING_PAYMENT для сверки
+        // а не помечается PAYMENT_FAILED
+        verify(orderRepository, never()).markPaymentFailed(anyLong());
+        verify(cartItemRepository, never()).deleteAllByUserIdAndProductIdIn(anyLong(), any());
     }
 
     @Test
@@ -158,5 +181,27 @@ class CheckoutUseCaseTest {
 
         // Заказ остался PENDING_PAYMENT — его подхватит сверка.
         verify(orderRepository, never()).markPaymentFailed(42L);
+    }
+
+    @Test
+    void execute_markPaidZeroRowsUpdated_doesNotClearCart() {
+        ProductsInCart cart = cartWithTotal(BigDecimal.valueOf(200));
+        Orders saved = Orders.builder().id(42L).userId(USER_ID).totalSum(BigDecimal.valueOf(200))
+                .status(OrderStatus.PENDING_PAYMENT).idempotencyKey(UUID.randomUUID()).build();
+
+        when(cartService.getAllProductsInCart(USER_ID)).thenReturn(Mono.just(cart));
+        when(orderRepository.save(any(Orders.class))).thenReturn(Mono.just(saved));
+        when(orderItemRepository.saveAll(any(Iterable.class))).thenReturn(Flux.empty());
+        when(purchaseService.pay(eq(USER_ID), eq(42L), any(UUID.class), eq(BigDecimal.valueOf(200))))
+                .thenReturn(Mono.just(new PaymentResponse().success(true).paymentId(7L)));
+        // 0 строк обновлено — значит статус уже сменил кто-то другой
+        // очистку корзины не выполняем повторно
+        when(orderRepository.markPaid(eq(42L), any(), eq(7L))).thenReturn(Mono.just(0));
+
+        StepVerifier.create(checkoutUseCase.execute(USER_ID))
+                .expectNext(42L)
+                .verifyComplete();
+
+        verify(cartItemRepository, never()).deleteAllByUserIdAndProductIdIn(any(), any());
     }
 }
