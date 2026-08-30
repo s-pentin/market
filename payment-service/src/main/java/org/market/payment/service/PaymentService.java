@@ -1,6 +1,7 @@
 package org.market.payment.service;
 
 import org.market.payment.config.PaymentProperties;
+import org.market.payment.exception.IdempotencyKeyConflictException;
 import org.market.payment.exception.InsufficientFundsException;
 import org.market.payment.exception.InvalidPaymentRequestException;
 import org.market.payment.model.Balance;
@@ -8,13 +9,13 @@ import org.market.payment.model.PaymentRecord;
 import org.market.payment.model.PaymentRecordStatus;
 import org.market.payment.repository.BalanceRepository;
 import org.market.payment.repository.PaymentRecordRepository;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -22,13 +23,16 @@ public class PaymentService {
 
     private final BalanceRepository balanceRepository;
     private final PaymentRecordRepository paymentRecordRepository;
+    private final PaymentRecordWriter paymentRecordWriter;
     private final PaymentProperties paymentProperties;
 
     public PaymentService(BalanceRepository balanceRepository,
                            PaymentRecordRepository paymentRecordRepository,
+                           PaymentRecordWriter paymentRecordWriter,
                            PaymentProperties paymentProperties) {
         this.balanceRepository = balanceRepository;
         this.paymentRecordRepository = paymentRecordRepository;
+        this.paymentRecordWriter = paymentRecordWriter;
         this.paymentProperties = paymentProperties;
     }
 
@@ -48,11 +52,18 @@ public class PaymentService {
         }
 
         return paymentRecordRepository.findByIdempotencyKey(idempotencyKey)
-                .flatMap(this::replay)
+                .flatMap(existing -> replay(existing, userId, orderId, amount))
                 .switchIfEmpty(Mono.defer(() -> chargeAndRecord(userId, orderId, idempotencyKey, amount)));
     }
 
-    private Mono<PaymentOutcome> replay(PaymentRecord existing) {
+    private Mono<PaymentOutcome> replay(PaymentRecord existing, Long userId, Long orderId, BigDecimal amount) {
+        boolean matches = existing.getUserId().equals(userId)
+                && Objects.equals(existing.getOrderId(), orderId)
+                && existing.getAmount().compareTo(amount) == 0;
+        if (!matches) {
+            return Mono.error(new IdempotencyKeyConflictException(
+                    "idempotency key уже использован ранее с другими параметрами платежа"));
+        }
         if (existing.getStatus() == PaymentRecordStatus.FAILED) {
             return Mono.error(new InsufficientFundsException(
                     "Платёж с этим idempotency key уже был отклонён ранее"));
@@ -69,9 +80,7 @@ public class PaymentService {
                     PaymentRecord record = new PaymentRecord(
                             null, orderId, userId, idempotencyKey, amount, status, LocalDateTime.now());
 
-                    return paymentRecordRepository.save(record)
-                            .onErrorResume(DataIntegrityViolationException.class, e ->
-                                    paymentRecordRepository.findByIdempotencyKey(idempotencyKey))
+                    return paymentRecordWriter.saveIndependently(record)
                             .flatMap(saved -> saved.getStatus() == PaymentRecordStatus.SUCCEEDED
                                     ? balanceRepository.findByUserId(userId).map(balance -> new PaymentOutcome(saved, balance))
                                     : Mono.error(new InsufficientFundsException(
