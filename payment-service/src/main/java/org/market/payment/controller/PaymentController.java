@@ -58,7 +58,8 @@ public class PaymentController implements BalanceApi, PaymentApi {
                         .map(balance -> {
                             PaymentRecordResponse response = new PaymentRecordResponse()
                                     .status(PaymentRecordResponse.StatusEnum.fromValue(record.getStatus().name()))
-                                    .newBalance(balance.getAmount());
+                                    .newBalance(balance.getAmount())
+                                    .paymentId(record.getId());
                             return ResponseEntity.ok(response);
                         }))
                 .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND).build()));
