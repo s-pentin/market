@@ -6,7 +6,6 @@ import org.market.app.exceptions.PaymentServiceUnavailableException;
 import org.market.app.payment.api.BalanceApi;
 import org.market.app.payment.api.PaymentApi;
 import org.market.app.payment.model.BalanceResponse;
-import org.market.app.payment.model.PaymentRecordResponse;
 import org.market.app.payment.model.PaymentRequest;
 import org.market.app.payment.model.PaymentResponse;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
@@ -16,7 +15,6 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
@@ -52,6 +50,10 @@ public class PurchaseService {
                     if (e.getStatusCode().value() == 400) {
                         return new InvalidPaymentRequestException("Некорректная сумма платежа");
                     }
+                    if (e.getStatusCode().value() == 409) {
+                        return new InvalidPaymentRequestException(
+                                "Конфликт idempotency key: параметры платежа не совпадают с исходным запросом");
+                    }
                     if (e.getStatusCode().is5xxServerError()) {
                         return new PaymentServiceUnavailableException("Сервис платежей недоступен", e);
                     }
@@ -60,11 +62,25 @@ public class PurchaseService {
                 .transform(PurchaseService::mapTransportErrors);
     }
 
-    public Mono<Optional<PaymentRecordResponse>> checkPaymentStatus(UUID idempotencyKey) {
+    /**
+     * Тройной исход опроса статуса платежа (см. {@link PaymentStatusResult}): 404 — платежа
+     * действительно нет, успешный ответ — обрабатываем фактический статус, любая другая
+     * ошибка (таймаут, 5xx, сбой OAuth2, сетевая ошибка) — Indeterminate, вызывающий код
+     * (OrderReconciliationService) должен оставить заказ в PENDING_PAYMENT и повторить позже.
+     */
+    public Mono<PaymentStatusResult> checkPaymentStatus(UUID idempotencyKey) {
         return paymentApi.getPaymentByIdempotencyKey(idempotencyKey)
-                .map(Optional::of)
-                .onErrorResume(WebClientResponseException.NotFound.class, e -> Mono.just(Optional.empty()))
-                .transform(PurchaseService::mapTransportErrors);
+                .<PaymentStatusResult>map(PaymentStatusResult.Found::new)
+                .onErrorResume(WebClientResponseException.NotFound.class,
+                        e -> Mono.just(new PaymentStatusResult.NotFound()))
+                .onErrorResume(WebClientResponseException.class,
+                        e -> Mono.just(new PaymentStatusResult.Indeterminate(e)))
+                .onErrorResume(WebClientRequestException.class,
+                        e -> Mono.just(new PaymentStatusResult.Indeterminate(e)))
+                .onErrorResume(OAuth2AuthorizationException.class,
+                        e -> Mono.just(new PaymentStatusResult.Indeterminate(e)))
+                .onErrorResume(TimeoutException.class,
+                        e -> Mono.just(new PaymentStatusResult.Indeterminate(e)));
     }
 
     private static <T> Mono<T> mapTransportErrors(Mono<T> mono) {
