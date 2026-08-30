@@ -19,6 +19,7 @@ public class OrderItems {
     @Id
     private Long id;
     private Long orderId;
+    private Long productId;
     private String title;
     private BigDecimal price;
     private int count;

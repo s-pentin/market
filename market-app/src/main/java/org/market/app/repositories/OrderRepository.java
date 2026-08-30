@@ -19,10 +19,11 @@ public interface OrderRepository extends ReactiveCrudRepository<Orders, Long> {
     Flux<Orders> findAllByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime cutoff);
 
     @Modifying
-    @Query("UPDATE orders SET status = 'PAID', paid_at = :paidAt, payment_id = :paymentId WHERE id = :id")
+    @Query("UPDATE orders SET status = 'PAID', paid_at = :paidAt, payment_id = :paymentId " +
+            "WHERE id = :id AND status = 'PENDING_PAYMENT'")
     Mono<Integer> markPaid(Long id, LocalDateTime paidAt, Long paymentId);
 
     @Modifying
-    @Query("UPDATE orders SET status = 'PAYMENT_FAILED' WHERE id = :id")
+    @Query("UPDATE orders SET status = 'PAYMENT_FAILED' WHERE id = :id AND status = 'PENDING_PAYMENT'")
     Mono<Integer> markPaymentFailed(Long id);
 }

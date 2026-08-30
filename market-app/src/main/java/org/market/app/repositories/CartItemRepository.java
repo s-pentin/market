@@ -15,7 +15,7 @@ public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Lon
     Flux<CartItem> findAllByUserId(Long userId);
     Mono<CartItem> findByUserIdAndProductId(Long userId, Long productId);
     Flux<CartItem> findAllByUserIdAndProductIdIn(Long userId, Collection<Long> productIds);
-    Mono<Void> deleteAllByUserId(Long userId);
+    Mono<Void> deleteAllByUserIdAndProductIdIn(Long userId, Collection<Long> productIds);
 
     @Modifying
     @Query("INSERT INTO cart_item (user_id, product_id, count) VALUES (:userId, :productId, 1) " +
