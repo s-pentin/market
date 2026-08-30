@@ -2,8 +2,11 @@ package org.market.payment.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.market.payment.exception.InsufficientFundsException;
 import org.market.payment.infra.TestContainers;
 import org.market.payment.model.Balance;
+import org.market.payment.model.PaymentRecord;
+import org.market.payment.model.PaymentRecordStatus;
 import org.market.payment.repository.BalanceRepository;
 import org.market.payment.repository.PaymentRecordRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +15,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -85,5 +89,22 @@ class PaymentServiceConcurrencyTest {
         assertThat(balance.getAmount()).isEqualByComparingTo("4000");
         assertThat(second.paymentRecord().getId()).isEqualTo(first.paymentRecord().getId());
         assertThat(paymentRecordRepository.count().block()).isEqualTo(1L);
+    }
+
+    @Test
+    void insufficientFunds_failedRecordPersistsDespiteOuterTransactionRollback() {
+        balanceRepository.save(new Balance(null, USER_ID, BigDecimal.valueOf(100), "RUB")).block();
+        UUID key = UUID.randomUUID();
+
+        StepVerifier.create(paymentService.processPayment(USER_ID, 1L, key, BigDecimal.valueOf(1000)))
+                .expectError(InsufficientFundsException.class)
+                .verify();
+
+        PaymentRecord record = paymentRecordRepository.findByIdempotencyKey(key).block();
+        assertThat(record).as("запись о неудачном платеже должна пережить откат внешней транзакции").isNotNull();
+        assertThat(record.getStatus()).isEqualTo(PaymentRecordStatus.FAILED);
+
+        Balance balance = balanceRepository.findByUserId(USER_ID).block();
+        assertThat(balance.getAmount()).isEqualByComparingTo("100");
     }
 }
