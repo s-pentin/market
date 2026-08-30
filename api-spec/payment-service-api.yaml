@@ -2,6 +2,8 @@ openapi: 3.0.3
 info:
   title: Payment Service API
   version: 1.0.0
+security:
+  - oauth2ClientCredentials: [payment-service-audience]
 paths:
   /api/v1/balance/{userId}:
     get:
@@ -23,6 +25,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BalanceResponse'
+        '401':
+          description: Токен отсутствует, невалиден, просрочен или не проходит проверку issuer/audience
+        '403':
+          description: Токен валиден, но не содержит требуемый scope
   /api/v1/payment:
     post:
       operationId: processPayment
@@ -54,6 +60,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          description: Токен отсутствует, невалиден, просрочен или не проходит проверку issuer/audience
+        '403':
+          description: Токен валиден, но не содержит требуемый scope
+        '409':
+          description: idempotencyKey уже использован ранее с другими userId/orderId/amount
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
   /api/v1/payment/by-idempotency-key/{idempotencyKey}:
     get:
       operationId: getPaymentByIdempotencyKey
@@ -76,7 +92,19 @@ paths:
                 $ref: '#/components/schemas/PaymentRecordResponse'
         '404':
           description: Платёж с таким idempotency key ещё не обрабатывался
+        '401':
+          description: Токен отсутствует, невалиден, просрочен или не проходит проверку issuer/audience
+        '403':
+          description: Токен валиден, но не содержит требуемый scope
 components:
+  securitySchemes:
+    oauth2ClientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: http://localhost:8083/realms/market/protocol/openid-connect/token
+          scopes:
+            payment-service-audience: Доступ к API payment-service от имени market-app
   schemas:
     BalanceResponse:
       type: object
@@ -123,3 +151,6 @@ components:
           enum: [SUCCEEDED, FAILED]
         newBalance:
           type: number
+        paymentId:
+          type: integer
+          format: int64
