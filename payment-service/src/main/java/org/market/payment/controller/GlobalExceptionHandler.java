@@ -1,5 +1,6 @@
 package org.market.payment.controller;
 
+import org.market.payment.exception.IdempotencyKeyConflictException;
 import org.market.payment.exception.InsufficientFundsException;
 import org.market.payment.exception.InvalidPaymentRequestException;
 import org.market.payment.model.PaymentResponse;
@@ -26,5 +27,13 @@ public class GlobalExceptionHandler {
                 .success(false)
                 .message(e.getMessage());
         return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response));
+    }
+
+    @ExceptionHandler(IdempotencyKeyConflictException.class)
+    public Mono<ResponseEntity<PaymentResponse>> handleIdempotencyConflict(IdempotencyKeyConflictException e) {
+        PaymentResponse response = new PaymentResponse()
+                .success(false)
+                .message(e.getMessage());
+        return Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).body(response));
     }
 }

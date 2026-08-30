@@ -3,6 +3,7 @@ package org.market.payment.service;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.market.payment.config.PaymentProperties;
+import org.market.payment.exception.IdempotencyKeyConflictException;
 import org.market.payment.exception.InsufficientFundsException;
 import org.market.payment.exception.InvalidPaymentRequestException;
 import org.market.payment.model.Balance;
@@ -40,11 +41,19 @@ class PaymentServiceTest {
     @Mock
     private PaymentRecordRepository paymentRecordRepository;
 
+    @Mock
+    private PaymentRecordWriter paymentRecordWriter;
+
     private PaymentService paymentService;
 
     private PaymentService newPaymentService() {
-        return new PaymentService(balanceRepository, paymentRecordRepository,
+        return new PaymentService(balanceRepository, paymentRecordRepository, paymentRecordWriter,
                 new PaymentProperties(BigDecimal.valueOf(5000), "RUB"));
+    }
+
+    private void stubWriterEchoesInput() {
+        when(paymentRecordWriter.saveIndependently(any(PaymentRecord.class)))
+                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
     }
 
     @Test
@@ -82,8 +91,7 @@ class PaymentServiceTest {
         when(paymentRecordRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Mono.empty());
         when(balanceRepository.ensureExists(eq(USER_ID), any(), any())).thenReturn(Mono.just(0));
         when(balanceRepository.debit(USER_ID, BigDecimal.valueOf(1000))).thenReturn(Mono.just(1));
-        when(paymentRecordRepository.save(any(PaymentRecord.class)))
-                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
+        stubWriterEchoesInput();
         when(balanceRepository.findByUserId(USER_ID))
                 .thenReturn(Mono.just(new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(4000), "RUB")));
 
@@ -98,8 +106,7 @@ class PaymentServiceTest {
         when(paymentRecordRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Mono.empty());
         when(balanceRepository.ensureExists(eq(USER_ID), any(), any())).thenReturn(Mono.just(0));
         when(balanceRepository.debit(USER_ID, BigDecimal.valueOf(1000))).thenReturn(Mono.just(1));
-        when(paymentRecordRepository.save(any(PaymentRecord.class)))
-                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
+        stubWriterEchoesInput();
         when(balanceRepository.findByUserId(USER_ID))
                 .thenReturn(Mono.just(new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(4000), "RUB")));
 
@@ -107,7 +114,7 @@ class PaymentServiceTest {
                 .expectNextCount(1)
                 .verifyComplete();
 
-        verify(paymentRecordRepository).save(argThat(r ->
+        verify(paymentRecordWriter).saveIndependently(argThat(r ->
                 r.getStatus() == PaymentRecordStatus.SUCCEEDED
                         && r.getIdempotencyKey().equals(IDEMPOTENCY_KEY)
                         && r.getOrderId().equals(ORDER_ID)));
@@ -151,14 +158,13 @@ class PaymentServiceTest {
         when(paymentRecordRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Mono.empty());
         when(balanceRepository.ensureExists(eq(USER_ID), any(), any())).thenReturn(Mono.just(0));
         when(balanceRepository.debit(USER_ID, BigDecimal.valueOf(1000))).thenReturn(Mono.just(0));
-        when(paymentRecordRepository.save(any(PaymentRecord.class)))
-                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
+        stubWriterEchoesInput();
 
         StepVerifier.create(paymentService.processPayment(USER_ID, ORDER_ID, IDEMPOTENCY_KEY, BigDecimal.valueOf(1000)))
                 .expectError(InsufficientFundsException.class)
                 .verify();
 
-        verify(paymentRecordRepository).save(argThat(r -> r.getStatus() == PaymentRecordStatus.FAILED));
+        verify(paymentRecordWriter).saveIndependently(argThat(r -> r.getStatus() == PaymentRecordStatus.FAILED));
     }
 
     @Test
@@ -175,7 +181,7 @@ class PaymentServiceTest {
                 .verifyComplete();
 
         verify(balanceRepository, never()).debit(any(), any());
-        verify(paymentRecordRepository, never()).save(any());
+        verify(paymentRecordWriter, never()).saveIndependently(any());
     }
 
     @Test
@@ -187,6 +193,34 @@ class PaymentServiceTest {
 
         StepVerifier.create(paymentService.processPayment(USER_ID, ORDER_ID, IDEMPOTENCY_KEY, BigDecimal.valueOf(1000)))
                 .expectError(InsufficientFundsException.class)
+                .verify();
+
+        verify(balanceRepository, never()).debit(any(), any());
+    }
+
+    @Test
+    void processPayment_sameIdempotencyKeyDifferentAmount_returns409Conflict() {
+        paymentService = newPaymentService();
+        PaymentRecord existing = new PaymentRecord(1L, ORDER_ID, USER_ID, IDEMPOTENCY_KEY,
+                BigDecimal.valueOf(1000), PaymentRecordStatus.SUCCEEDED, LocalDateTime.now());
+        when(paymentRecordRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Mono.just(existing));
+
+        StepVerifier.create(paymentService.processPayment(USER_ID, ORDER_ID, IDEMPOTENCY_KEY, BigDecimal.valueOf(2000)))
+                .expectError(IdempotencyKeyConflictException.class)
+                .verify();
+
+        verify(balanceRepository, never()).debit(any(), any());
+    }
+
+    @Test
+    void processPayment_sameIdempotencyKeyDifferentUser_returns409Conflict() {
+        paymentService = newPaymentService();
+        PaymentRecord existing = new PaymentRecord(1L, ORDER_ID, USER_ID, IDEMPOTENCY_KEY,
+                BigDecimal.valueOf(1000), PaymentRecordStatus.SUCCEEDED, LocalDateTime.now());
+        when(paymentRecordRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Mono.just(existing));
+
+        StepVerifier.create(paymentService.processPayment(999L, ORDER_ID, IDEMPOTENCY_KEY, BigDecimal.valueOf(1000)))
+                .expectError(IdempotencyKeyConflictException.class)
                 .verify();
 
         verify(balanceRepository, never()).debit(any(), any());
