@@ -1,7 +1,10 @@
 package org.market.app.usecases;
 
+import org.market.app.dto.ItemDto;
 import org.market.app.dto.ProductsInCart;
 import org.market.app.exceptions.EmptyCartException;
+import org.market.app.exceptions.InsufficientFundsException;
+import org.market.app.exceptions.InvalidPaymentRequestException;
 import org.market.app.models.OrderItems;
 import org.market.app.models.OrderStatus;
 import org.market.app.models.Orders;
@@ -53,15 +56,19 @@ public class CheckoutUseCase {
                     if (cart.getItems().isEmpty()) {
                         return Mono.error(new EmptyCartException());
                     }
+                    List<Long> productIds = cart.getItems().stream().map(ItemDto::getId).toList();
                     return createPendingOrder(userId, cart)
-                            .flatMap(order -> payAndFinalize(order, cart.getTotalCost()));
+                            .flatMap(order -> payAndFinalize(order, cart.getTotalCost(), productIds));
                 });
     }
 
-    /** сохраняем заказ в статусе PENDING_PAYMENT и снимок позиций. */
+    /**
+     * сохраняем заказ в статусе PENDING_PAYMENT и снимок позиций
+     */
     private Mono<Orders> createPendingOrder(Long userId, ProductsInCart cart) {
         List<OrderItems> items = cart.getItems().stream()
                 .map(item -> OrderItems.builder()
+                        .productId(item.getId())
                         .title(item.getTitle())
                         .price(item.getPrice())
                         .count(item.getCount())
@@ -81,6 +88,7 @@ public class CheckoutUseCase {
                     List<OrderItems> withOrderId = items.stream()
                             .map(item -> OrderItems.builder()
                                     .orderId(saved.getId())
+                                    .productId(item.getProductId())
                                     .title(item.getTitle())
                                     .price(item.getPrice())
                                     .count(item.getCount())
@@ -93,17 +101,29 @@ public class CheckoutUseCase {
                 .as(transactionalOperator::transactional);
     }
 
-    /** платёж, затем перевод заказа в финальный статус. */
-    private Mono<Long> payAndFinalize(Orders order, BigDecimal total) {
+    /**
+     * Платёж, затем перевод заказа в финальный статус. Заказ помечается PAYMENT_FAILED только
+     * при подтверждённом отказе (недостаточно средств / некорректный запрос) — при неопределённом
+     * техническом сбое заказ остаётся PENDING_PAYMENT: деньги могли уже списаться, а потерялся только ответ,
+     * и решать его судьбу должна сверка ({@link org.market.app.services.OrderReconciliationService}), а не повторная
+     * попытка покупки.
+     */
+    private Mono<Long> payAndFinalize(Orders order, BigDecimal total, List<Long> productIds) {
         return purchaseService.pay(order.getUserId(), order.getId(), order.getIdempotencyKey(), total)
-                .onErrorResume(e -> orderRepository.markPaymentFailed(order.getId())
-                        .then(Mono.error(e)))
-                .flatMap(response -> finalizePaid(order, response.getPaymentId()));
+                .onErrorResume(this::isConfirmedRejection,
+                        e -> orderRepository.markPaymentFailed(order.getId()).then(Mono.error(e)))
+                .flatMap(response -> finalizePaid(order, response.getPaymentId(), productIds));
     }
 
-    private Mono<Long> finalizePaid(Orders order, Long paymentId) {
+    private boolean isConfirmedRejection(Throwable e) {
+        return e instanceof InsufficientFundsException || e instanceof InvalidPaymentRequestException;
+    }
+
+    private Mono<Long> finalizePaid(Orders order, Long paymentId, List<Long> productIds) {
         return orderRepository.markPaid(order.getId(), LocalDateTime.now(), paymentId)
-                .then(cartItemRepository.deleteAllByUserId(order.getUserId()))
+                .flatMap(rowsUpdated -> rowsUpdated > 0
+                        ? cartItemRepository.deleteAllByUserIdAndProductIdIn(order.getUserId(), productIds)
+                        : Mono.empty())
                 .thenReturn(order.getId())
                 .as(transactionalOperator::transactional);
     }
