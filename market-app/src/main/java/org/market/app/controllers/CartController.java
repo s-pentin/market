@@ -1,8 +1,10 @@
 package org.market.app.controllers;
 
 import org.market.app.models.Action;
+import org.market.app.security.AppUserDetails;
 import org.market.app.services.CartService;
 import org.market.app.services.PurchaseService;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,8 +29,8 @@ public class CartController {
     }
 
     @GetMapping("/items")
-    public Mono<String> getCart(Model model) {
-        return cartService.getAllProductsInCart()
+    public Mono<String> getCart(@AuthenticationPrincipal AppUserDetails principal, Model model) {
+        return cartService.getAllProductsInCart(principal.getId())
                 .flatMap(cart -> {
                     model.addAttribute("items", cart.getItems());
                     model.addAttribute("total", cart.getTotalCost());
@@ -39,7 +41,7 @@ public class CartController {
                         return Mono.just("cart");
                     }
 
-                    return purchaseService.getBalance()
+                    return purchaseService.getBalance(principal.getId())
                             .map(balance -> {
                                 model.addAttribute("balance", balance);
                                 model.addAttribute("canCheckout",
@@ -56,12 +58,12 @@ public class CartController {
     }
 
     @PostMapping("/items")
-    public Mono<String> updateCart(ServerWebExchange exchange) {
+    public Mono<String> updateCart(@AuthenticationPrincipal AppUserDetails principal, ServerWebExchange exchange) {
         return exchange.getFormData()
                 .flatMap(form -> {
                     Long id = Long.valueOf(Objects.requireNonNull(form.getFirst("id")));
                     Action action = Action.valueOf(form.getFirst("action"));
-                    return cartService.changeCount(id, action)
+                    return cartService.changeCount(principal.getId(), id, action)
                             .thenReturn("redirect:/cart/items");
                 });
     }

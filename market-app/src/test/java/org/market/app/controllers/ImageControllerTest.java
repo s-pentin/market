@@ -1,10 +1,13 @@
 package org.market.app.controllers;
 
 import org.junit.jupiter.api.Test;
+import org.market.app.security.SecurityConfig;
 import org.market.app.services.ImageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Optional;
@@ -12,6 +15,7 @@ import java.util.Optional;
 import static org.mockito.Mockito.when;
 
 @WebFluxTest(ImageController.class)
+@Import(SecurityConfig.class)
 class ImageControllerTest {
 
     @Autowired
@@ -19,6 +23,9 @@ class ImageControllerTest {
 
     @MockBean
     private ImageService imageService;
+
+    @MockBean
+    private ReactiveUserDetailsService reactiveUserDetailsService;
 
     @Test
     void getImage_notFound_returns404() {

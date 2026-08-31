@@ -13,7 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductsPage {
-    List<List<ItemDto>> items;
+    List<ItemDto> items;
     Paging paging;
     String search;
     SortType sort;

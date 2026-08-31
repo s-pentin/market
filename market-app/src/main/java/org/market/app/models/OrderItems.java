@@ -18,12 +18,8 @@ public class OrderItems {
 
     @Id
     private Long id;
-
-//    @ManyToOne(fetch = FetchType.LAZY)
-//    @JoinColumn(name = "order_id", nullable = false)
-//    @Setter(AccessLevel.PROTECTED)
-//    private Orders orders;
     private Long orderId;
+    private Long productId;
     private String title;
     private BigDecimal price;
     private int count;

@@ -39,3 +39,5 @@ out/
 market-app/src/main/resources/application.properties
 payment-service/src/main/resources/application.properties
 .env
+
+keycloak/keycloak.env

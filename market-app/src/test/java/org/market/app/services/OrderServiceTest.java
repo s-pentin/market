@@ -17,10 +17,13 @@ import reactor.test.StepVerifier;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTest {
+
+    private static final Long USER_ID = 1L;
 
     @Mock
     private OrderRepository orderRepository;
@@ -31,16 +34,20 @@ class OrderServiceTest {
     @InjectMocks
     private OrderService orderService;
 
+    private Orders order(Long id, BigDecimal total) {
+        return Orders.builder().id(id).userId(USER_ID).totalSum(total).build();
+    }
+
     @Test
     void getAllOrders_returnsOrderDtoList() {
-        Orders order = new Orders(1L, BigDecimal.valueOf(500));
+        Orders order = order(1L, BigDecimal.valueOf(500));
         OrderItems item = OrderItems.builder()
                 .id(1L).orderId(1L).title("Ball").price(BigDecimal.valueOf(100)).count(5).build();
 
-        when(orderRepository.findAll()).thenReturn(Flux.just(order));
-        when(orderItemRepository.findAllByOrderId(1L)).thenReturn(Flux.just(item));
+        when(orderRepository.findAllByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(Flux.just(order));
+        when(orderItemRepository.findAllByOrderIdIn(anyCollection())).thenReturn(Flux.just(item));
 
-        StepVerifier.create(orderService.getAllOrders())
+        StepVerifier.create(orderService.getAllOrders(USER_ID))
                 .assertNext(dto -> {
                     assertThat(dto.getId()).isEqualTo(1L);
                     assertThat(dto.getTotalSum()).isEqualByComparingTo(BigDecimal.valueOf(500));
@@ -52,14 +59,14 @@ class OrderServiceTest {
 
     @Test
     void getOrderById_returnsOrderDto() {
-        Orders order = new Orders(1L, BigDecimal.valueOf(200));
+        Orders order = order(1L, BigDecimal.valueOf(200));
         OrderItems item = OrderItems.builder()
                 .id(1L).orderId(1L).title("Book").price(BigDecimal.valueOf(100)).count(2).build();
 
-        when(orderRepository.findById(1L)).thenReturn(Mono.just(order));
+        when(orderRepository.findByIdAndUserId(1L, USER_ID)).thenReturn(Mono.just(order));
         when(orderItemRepository.findAllByOrderId(1L)).thenReturn(Flux.just(item));
 
-        StepVerifier.create(orderService.getOrderById(1L))
+        StepVerifier.create(orderService.getOrderById(1L, USER_ID))
                 .assertNext(dto -> {
                     assertThat(dto.getId()).isEqualTo(1L);
                     assertThat(dto.getTotalSum()).isEqualByComparingTo(BigDecimal.valueOf(200));
@@ -70,9 +77,9 @@ class OrderServiceTest {
 
     @Test
     void getOrderById_notFound_throwsOrderNotFoundException() {
-        when(orderRepository.findById(99L)).thenReturn(Mono.empty());
+        when(orderRepository.findByIdAndUserId(99L, USER_ID)).thenReturn(Mono.empty());
 
-        StepVerifier.create(orderService.getOrderById(99L))
+        StepVerifier.create(orderService.getOrderById(99L, USER_ID))
                 .expectErrorMatches(e -> e instanceof OrderNotFoundException
                         && e.getMessage().contains("99"))
                 .verify();

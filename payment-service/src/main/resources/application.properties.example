@@ -8,3 +8,6 @@ spring.datasource.password=password
 
 # Отключаем Flyway в payment-service (миграциями управляет market-app)
 spring.flyway.enabled=false
+
+# OAuth2 Resource Server — issuer Keycloak
+spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:8083/realms/market

@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.market.app.infra.TestContainers;
 import org.market.app.models.CartItem;
 import org.market.app.models.Product;
+import org.market.app.models.Role;
+import org.market.app.models.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
@@ -24,19 +26,36 @@ class CartItemRepositoryTest {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
+    private OrderItemRepository orderItemRepository;
+
+    private Long userId;
+
     @BeforeEach
     void setUp() {
+        // Полная очистка всей FK-цепочки, а не только своих таблиц: этот тест-класс
+        // делит один и тот же Testcontainers-контейнер Postgres с OrderRepositoryTest/ProductRepositoryTest
+        orderItemRepository.deleteAll().block();
+        orderRepository.deleteAll().block();
         cartItemRepository.deleteAll().block();
         productRepository.deleteAll().block();
+        userRepository.deleteAll().block();
+        userId = userRepository.save(new User(null, "testuser", "hash", Role.CUSTOMER, true)).block().getId();
     }
 
     @Test
-    void findByProductId_found_returnsCartItem() {
+    void findByUserIdAndProductId_found_returnsCartItem() {
         Product product = productRepository.save(
                 new Product(null, "Ball", null, null, BigDecimal.valueOf(100))).block();
-        cartItemRepository.save(new CartItem(null, product.getId(), 2)).block();
+        cartItemRepository.save(new CartItem(null, userId, product.getId(), 2)).block();
 
-        StepVerifier.create(cartItemRepository.findByProductId(product.getId()))
+        StepVerifier.create(cartItemRepository.findByUserIdAndProductId(userId, product.getId()))
                 .assertNext(ci -> {
                     assertThat(ci.getCount()).isEqualTo(2);
                     assertThat(ci.getProductId()).isEqualTo(product.getId());
@@ -45,8 +64,8 @@ class CartItemRepositoryTest {
     }
 
     @Test
-    void findByProductId_notFound_returnsEmpty() {
-        StepVerifier.create(cartItemRepository.findByProductId(999L))
+    void findByUserIdAndProductId_notFound_returnsEmpty() {
+        StepVerifier.create(cartItemRepository.findByUserIdAndProductId(userId, 999L))
                 .verifyComplete();
     }
 
@@ -55,11 +74,11 @@ class CartItemRepositoryTest {
         Product product = productRepository.save(
                 new Product(null, "Book", null, null, BigDecimal.valueOf(50))).block();
 
-        StepVerifier.create(cartItemRepository.save(new CartItem(null, product.getId(), 1)))
+        StepVerifier.create(cartItemRepository.save(new CartItem(null, userId, product.getId(), 1)))
                 .assertNext(saved -> assertThat(saved.getId()).isNotNull())
                 .verifyComplete();
 
-        StepVerifier.create(cartItemRepository.findAll())
+        StepVerifier.create(cartItemRepository.findAllByUserId(userId))
                 .expectNextCount(1)
                 .verifyComplete();
     }

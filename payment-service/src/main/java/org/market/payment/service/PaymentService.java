@@ -1,48 +1,108 @@
 package org.market.payment.service;
 
-import org.market.payment.exception.BalanceNotFoundException;
+import org.market.payment.config.PaymentProperties;
+import org.market.payment.exception.IdempotencyKeyConflictException;
 import org.market.payment.exception.InsufficientFundsException;
 import org.market.payment.exception.InvalidPaymentRequestException;
 import org.market.payment.model.Balance;
+import org.market.payment.model.PaymentRecord;
+import org.market.payment.model.PaymentRecordStatus;
 import org.market.payment.repository.BalanceRepository;
+import org.market.payment.repository.PaymentRecordRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.UUID;
 
 @Service
 public class PaymentService {
 
-    private static final long BALANCE_ID = 1L;
-
     private final BalanceRepository balanceRepository;
+    private final PaymentRecordRepository paymentRecordRepository;
+    private final PaymentRecordWriter paymentRecordWriter;
+    private final PaymentProperties paymentProperties;
 
-    public PaymentService(BalanceRepository balanceRepository) {
+    public PaymentService(BalanceRepository balanceRepository,
+                           PaymentRecordRepository paymentRecordRepository,
+                           PaymentRecordWriter paymentRecordWriter,
+                           PaymentProperties paymentProperties) {
         this.balanceRepository = balanceRepository;
+        this.paymentRecordRepository = paymentRecordRepository;
+        this.paymentRecordWriter = paymentRecordWriter;
+        this.paymentProperties = paymentProperties;
     }
 
-    public Mono<Balance> getBalance() {
-        return balanceRepository.findById(BALANCE_ID);
+    public Mono<Balance> getBalance(Long userId) {
+        return balanceRepository.findByUserId(userId)
+                .switchIfEmpty(Mono.fromSupplier(() -> new Balance(
+                        null, userId, paymentProperties.initialBalance(), paymentProperties.defaultCurrency())));
     }
 
     @Transactional
-    public Mono<Balance> processPayment(BigDecimal amount) {
+    public Mono<PaymentOutcome> processPayment(Long userId, Long orderId, UUID idempotencyKey, BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             return Mono.error(new InvalidPaymentRequestException("Сумма платежа должна быть положительной"));
         }
+        if (idempotencyKey == null) {
+            return Mono.error(new InvalidPaymentRequestException("idempotencyKey обязателен"));
+        }
 
-        return balanceRepository.findById(BALANCE_ID)
-                .switchIfEmpty(Mono.error(new BalanceNotFoundException("Баланс не найден")))
-                .flatMap(balance -> {
-                    if (balance.getAmount().compareTo(amount) < 0) {
-                        return Mono.error(new InsufficientFundsException(
-                                "Недостаточно средств. Баланс: " + balance.getAmount() + ", требуется: " + amount));
+        return paymentRecordRepository.findByIdempotencyKey(idempotencyKey)
+                .flatMap(existing -> replay(existing, userId, orderId, amount))
+                .switchIfEmpty(Mono.defer(() -> chargeAndRecord(userId, orderId, idempotencyKey, amount)));
+    }
+
+    private Mono<PaymentOutcome> replay(PaymentRecord existing, Long userId, Long orderId, BigDecimal amount) {
+        boolean matches = existing.getUserId().equals(userId)
+                && Objects.equals(existing.getOrderId(), orderId)
+                && existing.getAmount().compareTo(amount) == 0;
+        if (!matches) {
+            return Mono.error(new IdempotencyKeyConflictException(
+                    "idempotency key уже использован ранее с другими параметрами платежа"));
+        }
+        if (existing.getStatus() == PaymentRecordStatus.FAILED) {
+            return Mono.error(new InsufficientFundsException(
+                    "Платёж с этим idempotency key уже был отклонён ранее"));
+        }
+        return balanceRepository.findByUserId(existing.getUserId())
+                .map(balance -> new PaymentOutcome(existing, balance));
+    }
+
+    /**
+     * SUCCEEDED коммитится в ТОЙ ЖЕ транзакции, что и debit (иначе списание могло бы откатиться,
+     * а запись "SUCCEEDED" — нет, и баланс с ledger разошлись бы). FAILED, наоборот, пишется через
+     * {@link PaymentRecordWriter} (REQUIRES_NEW) — debit в этом случае не изменил ни одной строки,
+     * а без независимого коммита запись о FAILED терялась бы при откате: сразу после сохранения
+     * ниже мы бросаем {@link InsufficientFundsException}, и без REQUIRES_NEW это откатило бы и сам
+     * INSERT записи об отказе.
+     */
+    private Mono<PaymentOutcome> chargeAndRecord(Long userId, Long orderId, UUID idempotencyKey, BigDecimal amount) {
+        return balanceRepository.ensureExists(userId, paymentProperties.initialBalance(), paymentProperties.defaultCurrency())
+                .then(balanceRepository.debit(userId, amount))
+                .flatMap(rowsUpdated -> {
+                    PaymentRecordStatus status = rowsUpdated > 0 ? PaymentRecordStatus.SUCCEEDED : PaymentRecordStatus.FAILED;
+                    PaymentRecord record = new PaymentRecord(
+                            null, orderId, userId, idempotencyKey, amount, status, LocalDateTime.now());
+
+                    if (status == PaymentRecordStatus.FAILED) {
+                        return paymentRecordWriter.saveIndependently(record)
+                                .flatMap(saved -> Mono.error(new InsufficientFundsException(
+                                        "Недостаточно средств для списания " + amount)));
                     }
-
-                    BigDecimal newAmount = balance.getAmount().subtract(amount);
-                    Balance updated = new Balance(balance.getId(), newAmount, balance.getCurrency());
-                    return balanceRepository.save(updated);
+                    return paymentRecordRepository.save(record)
+                            .onErrorResume(DataIntegrityViolationException.class, e ->
+                                    paymentRecordRepository.findByIdempotencyKey(idempotencyKey))
+                            .flatMap(saved -> balanceRepository.findByUserId(userId)
+                                    .map(balance -> new PaymentOutcome(saved, balance)));
                 });
+    }
+
+    public Mono<PaymentRecord> findByIdempotencyKey(UUID idempotencyKey) {
+        return paymentRecordRepository.findByIdempotencyKey(idempotencyKey);
     }
 }

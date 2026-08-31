@@ -8,6 +8,8 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Getter
 @Builder
@@ -18,11 +20,11 @@ public class Orders {
 
     @Id
     private Long id;
+    private Long userId;
     private BigDecimal totalSum;
-
-//    @OneToMany(mappedBy = "orders", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
-//    private List<OrderItems> items;
+    private OrderStatus status;
+    private LocalDateTime createdAt;
+    private LocalDateTime paidAt;
+    private Long paymentId;
+    private UUID idempotencyKey;
 }
-
-
-
