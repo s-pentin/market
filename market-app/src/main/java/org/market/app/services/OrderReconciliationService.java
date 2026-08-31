@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -36,6 +37,7 @@ public class OrderReconciliationService {
     private final OrderItemRepository orderItemRepository;
     private final CartItemRepository cartItemRepository;
     private final PurchaseService purchaseService;
+    private final TransactionalOperator transactionalOperator;
     private final Duration grace;
     private final Duration hardTimeout;
 
@@ -43,12 +45,14 @@ public class OrderReconciliationService {
                                       OrderItemRepository orderItemRepository,
                                       CartItemRepository cartItemRepository,
                                       PurchaseService purchaseService,
+                                      TransactionalOperator transactionalOperator,
                                       @Value("${app.order.reconciliation.grace:60s}") Duration grace,
                                       @Value("${app.order.reconciliation.hard-timeout:10m}") Duration hardTimeout) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.cartItemRepository = cartItemRepository;
         this.purchaseService = purchaseService;
+        this.transactionalOperator = transactionalOperator;
         this.grace = grace;
         this.hardTimeout = hardTimeout;
     }
@@ -81,9 +85,14 @@ public class OrderReconciliationService {
         return orderRepository.markPaymentFailed(order.getId()).then();
     }
 
+    /**
+     * Смена статуса на PAID и очистка корзины — одна локальная транзакция (обе таблицы в БД
+     * market-app). Если очистка корзины упадёт, откатится и markPaid.
+     */
     private Mono<Void> markPaidAndClearCart(Orders order, Long paymentId) {
         return orderRepository.markPaid(order.getId(), LocalDateTime.now(), paymentId)
-                .flatMap(rowsUpdated -> rowsUpdated > 0 ? clearOrderedItemsFromCart(order) : Mono.empty());
+                .flatMap(rowsUpdated -> rowsUpdated > 0 ? clearOrderedItemsFromCart(order) : Mono.<Void>empty())
+                .as(transactionalOperator::transactional);
     }
 
     /**

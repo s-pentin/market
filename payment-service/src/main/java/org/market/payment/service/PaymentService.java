@@ -9,6 +9,7 @@ import org.market.payment.model.PaymentRecord;
 import org.market.payment.model.PaymentRecordStatus;
 import org.market.payment.repository.BalanceRepository;
 import org.market.payment.repository.PaymentRecordRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
@@ -72,6 +73,14 @@ public class PaymentService {
                 .map(balance -> new PaymentOutcome(existing, balance));
     }
 
+    /**
+     * SUCCEEDED коммитится в ТОЙ ЖЕ транзакции, что и debit (иначе списание могло бы откатиться,
+     * а запись "SUCCEEDED" — нет, и баланс с ledger разошлись бы). FAILED, наоборот, пишется через
+     * {@link PaymentRecordWriter} (REQUIRES_NEW) — debit в этом случае не изменил ни одной строки,
+     * а без независимого коммита запись о FAILED терялась бы при откате: сразу после сохранения
+     * ниже мы бросаем {@link InsufficientFundsException}, и без REQUIRES_NEW это откатило бы и сам
+     * INSERT записи об отказе.
+     */
     private Mono<PaymentOutcome> chargeAndRecord(Long userId, Long orderId, UUID idempotencyKey, BigDecimal amount) {
         return balanceRepository.ensureExists(userId, paymentProperties.initialBalance(), paymentProperties.defaultCurrency())
                 .then(balanceRepository.debit(userId, amount))
@@ -80,11 +89,16 @@ public class PaymentService {
                     PaymentRecord record = new PaymentRecord(
                             null, orderId, userId, idempotencyKey, amount, status, LocalDateTime.now());
 
-                    return paymentRecordWriter.saveIndependently(record)
-                            .flatMap(saved -> saved.getStatus() == PaymentRecordStatus.SUCCEEDED
-                                    ? balanceRepository.findByUserId(userId).map(balance -> new PaymentOutcome(saved, balance))
-                                    : Mono.error(new InsufficientFundsException(
-                                            "Недостаточно средств для списания " + amount)));
+                    if (status == PaymentRecordStatus.FAILED) {
+                        return paymentRecordWriter.saveIndependently(record)
+                                .flatMap(saved -> Mono.error(new InsufficientFundsException(
+                                        "Недостаточно средств для списания " + amount)));
+                    }
+                    return paymentRecordRepository.save(record)
+                            .onErrorResume(DataIntegrityViolationException.class, e ->
+                                    paymentRecordRepository.findByIdempotencyKey(idempotencyKey))
+                            .flatMap(saved -> balanceRepository.findByUserId(userId)
+                                    .map(balance -> new PaymentOutcome(saved, balance)));
                 });
     }
 

@@ -56,6 +56,11 @@ class PaymentServiceTest {
                 .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
     }
 
+    private void stubRecordRepositorySaveEchoesInput() {
+        when(paymentRecordRepository.save(any(PaymentRecord.class)))
+                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
+    }
+
     @Test
     void getBalance_forNewUser_returnsVirtualDefaultWithoutSaving() {
         paymentService = newPaymentService();
@@ -91,7 +96,7 @@ class PaymentServiceTest {
         when(paymentRecordRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Mono.empty());
         when(balanceRepository.ensureExists(eq(USER_ID), any(), any())).thenReturn(Mono.just(0));
         when(balanceRepository.debit(USER_ID, BigDecimal.valueOf(1000))).thenReturn(Mono.just(1));
-        stubWriterEchoesInput();
+        stubRecordRepositorySaveEchoesInput();
         when(balanceRepository.findByUserId(USER_ID))
                 .thenReturn(Mono.just(new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(4000), "RUB")));
 
@@ -106,7 +111,7 @@ class PaymentServiceTest {
         when(paymentRecordRepository.findByIdempotencyKey(IDEMPOTENCY_KEY)).thenReturn(Mono.empty());
         when(balanceRepository.ensureExists(eq(USER_ID), any(), any())).thenReturn(Mono.just(0));
         when(balanceRepository.debit(USER_ID, BigDecimal.valueOf(1000))).thenReturn(Mono.just(1));
-        stubWriterEchoesInput();
+        stubRecordRepositorySaveEchoesInput();
         when(balanceRepository.findByUserId(USER_ID))
                 .thenReturn(Mono.just(new Balance(BALANCE_ID, USER_ID, BigDecimal.valueOf(4000), "RUB")));
 
@@ -114,10 +119,13 @@ class PaymentServiceTest {
                 .expectNextCount(1)
                 .verifyComplete();
 
-        verify(paymentRecordWriter).saveIndependently(argThat(r ->
+        // SUCCEEDED сохраняется через paymentRecordRepository напрямую — в той же транзакции,
+        // что и debit (см. javadoc chargeAndRecord), а не через PaymentRecordWriter (REQUIRES_NEW).
+        verify(paymentRecordRepository).save(argThat(r ->
                 r.getStatus() == PaymentRecordStatus.SUCCEEDED
                         && r.getIdempotencyKey().equals(IDEMPOTENCY_KEY)
                         && r.getOrderId().equals(ORDER_ID)));
+        verify(paymentRecordWriter, never()).saveIndependently(any());
     }
 
     @Test
@@ -182,6 +190,7 @@ class PaymentServiceTest {
 
         verify(balanceRepository, never()).debit(any(), any());
         verify(paymentRecordWriter, never()).saveIndependently(any());
+        verify(paymentRecordRepository, never()).save(any());
     }
 
     @Test
